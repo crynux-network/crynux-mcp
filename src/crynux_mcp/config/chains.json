@@ -1,0 +1,41 @@
+{
+  "default_network": "dymension",
+  "networks": {
+    "dymension": {
+      "chain_id": 1313161573,
+      "chain_name": "Crynux on Dymension",
+      "rpc_urls": [
+        "https://json-rpc.testnet-dym.crynux.io"
+      ],
+      "native_currency": {
+        "name": "Crynux",
+        "symbol": "CNX",
+        "decimals": 18
+      },
+      "contracts": {
+        "beneficial_address": "0xa4AC846337794C93d68D387Be77663e32AD415bb",
+        "node_staking": "0xf76C3f19c8976d0Bc49d48718669b99747b1837e",
+        "credits": "0xb592ee9c75873E13501e2eF1e2c31604C056f197",
+        "delegated_staking": "0x4b0946BB12474332D865AfAc5F77554b503C5570"
+      }
+    },
+    "near": {
+      "chain_id": 1313161574,
+      "chain_name": "Crynux on Near",
+      "rpc_urls": [
+        "https://json-rpc.testnet-near.crynux.io"
+      ],
+      "native_currency": {
+        "name": "Crynux",
+        "symbol": "CNX",
+        "decimals": 18
+      },
+      "contracts": {
+        "beneficial_address": "0xf57a8f8F7ab52EBD7971A65e9B44C767d3119c4f",
+        "node_staking": "0xd20403b243b0109809BEAa93Ac38f0e3b30039C0",
+        "credits": "0xdC54E16BB691C093264A58CcE1d5E357878b3D93",
+        "delegated_staking": "0x6463776672920939f8F637173F33C25Fa705f6D1"
+      }
+    }
+  }
+}

@@ -1,0 +1,37 @@
+[project]
+name = "crynux-mcp"
+version = "0.1.0"
+description = "Crynux MCP tools for blockchain operations"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "mcp[cli]",
+  "web3",
+  "pydantic",
+  "keyring",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+]
+
+[project.scripts]
+crynux-mcp = "crynux_mcp.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+crynux_mcp = ["config/chains.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
