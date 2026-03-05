@@ -5,7 +5,7 @@ Python MCP server for Crynux EVM L2 blockchain operations.
 ## Scope
 
 - Native CNX balance query on Crynux EVM networks
-- Native CNX transfer with locally provided private key
+- Native CNX transfer signed by a private key from local system keychain
 - Relay API integration is not implemented yet
 
 ## Spec and transport
@@ -17,43 +17,40 @@ Python MCP server for Crynux EVM L2 blockchain operations.
 
 ### `get_balance`
 
-Inputs:
-- `network`: optional (`dymension` or `near`). Defaults to configured default network.
-- `address`: EVM address
-- `unit`: optional, `wei` or `ether` (default: `ether`)
-
-Output fields:
-- `network`
-- `address`
-- `balance_wei`
-- `balance_formatted`
-- `symbol` (`CNX`)
-- `chain_id`
+Query the native CNX balance for an EVM address on a configured Crynux network.
 
 ### `transfer_native`
 
-Inputs:
-- `network`: optional (`dymension` or `near`). Defaults to configured default network.
-- `private_key`: EVM private key (passed per tool call)
-- `to`: recipient EVM address
-- `amount`: numeric string
-- `unit`: optional, `wei` or `ether` (default: `ether`)
-- `gas_price_wei`: optional override
-- `gas_limit`: optional override
+Send native CNX from the local signer wallet to a recipient EVM address.
 
-Output fields:
-- `network`
-- `from_address`
-- `to`
-- `value_wei`
-- `tx_hash`
-- `chain_id`
+### `create_key`
+
+Create a new signer key in local system keychain with a provided name.
+
+### `list_keys`
+
+List all local signer keys (name, address, and default flag).
+
+### `delete_key`
+
+Delete a local signer key by name.
+
+### `set_default_key`
+
+Set a local signer key as the default key.
+
+### `export_key`
+
+Export a named local signer key to a specified file path.
+
+For detailed tool inputs/outputs, see [`docs/tools.md`](./docs/tools.md).
 
 ## Security notes
 
 - The server never intentionally logs raw private keys.
-- Private key input is only used in-memory for the current call.
-- Tool-call private keys can still appear in host-side chat/tool history depending on client behavior.
+- `transfer_native` reads signer key from your local system keychain.
+- Optional fallback: if no keychain entry exists, it reads `CRYNUX_PRIVATE_KEY` from MCP server environment.
+- The model only sees transfer fields (`network`, `to`, `amount`, and optional gas fields), not raw key material.
 - Use dedicated low-risk wallets for AI operations, not treasury wallets.
 
 ## Get Started
@@ -61,7 +58,7 @@ Output fields:
 ### Step 1) Prerequisites
 
 - Install Python 3.11 or newer.
-- Open a terminal in this repository root: `crynux-mcp`.
+- Open a terminal.
 
 ### Step 2) Install the package
 
@@ -127,18 +124,39 @@ Edit `claude_desktop_config.json`:
 }
 ```
 
-### Step 4) Restart your AI client
+### Step 4) Manage signer keys (cross-platform)
+
+Run these commands in your terminal:
+
+```bash
+crynux-mcp key add --name main
+crynux-mcp key create --name trading-bot
+crynux-mcp key list
+crynux-mcp key set-default --name main
+crynux-mcp key delete --name trading-bot
+```
+
+`key add` prompts for your private key with hidden input and stores it in your OS keychain.
+`key create` generates a new private key and stores it directly in your OS keychain.
+
+- Windows: Credential Manager
+- macOS: Keychain
+- Linux: Secret Service compatible keyring
+
+Optional advanced fallback (if you do not want keychain): set `CRYNUX_PRIVATE_KEY` in MCP server env.
+
+### Step 5) Restart your AI client
 
 After saving MCP config, fully restart the client so it reloads servers.
 
-### Step 5) Verify the server is loaded
+### Step 6) Verify the server is loaded
 
 In your AI client, check MCP tool list and confirm these tools appear:
 
 - `get_balance`
 - `transfer_native`
 
-### Step 6) First tool calls
+### Step 7) First tool calls
 
 Example: query balance
 
@@ -149,12 +167,17 @@ Example: query balance
 Example: send native CNX
 
 - `network`: `dymension`
-- `private_key`: sender private key
+- `key_name`: `main` (optional, uses default local key if omitted)
 - `to`: recipient EVM address
 - `amount`: for example `0.1`
 - `unit`: `ether`
 
-### Step 7) Optional local manual run
+Signer key source for transfer:
+
+- Named key in system keychain set by `crynux-mcp key add` or `crynux-mcp key create` (preferred)
+- `CRYNUX_PRIVATE_KEY` env var fallback
+
+### Step 8) Optional local manual run
 
 You can start the MCP server process directly for debugging:
 

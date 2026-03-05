@@ -8,6 +8,14 @@ from mcp.server.fastmcp import FastMCP
 
 from crynux_mcp.blockchain.evm_client import EvmClient
 from crynux_mcp.config.loader import load_chain_registry
+from crynux_mcp.security.key_store import (
+    create_key as create_local_key,
+    delete_key as delete_local_key,
+    export_key as export_local_key,
+    get_private_key,
+    list_keys as list_local_keys,
+    set_default_key as set_default_local_key,
+)
 from crynux_mcp.security.redaction import redact_secrets, sanitize_error_message
 
 mcp = FastMCP("crynux-mcp")
@@ -43,14 +51,16 @@ def handle_get_balance(network: str | None, address: str, unit: str | None = Non
 
 def handle_transfer_native(
     network: str | None,
-    private_key: str,
     to: str,
     amount: str,
+    key_name: str | None = None,
     unit: str | None = "ether",
     gas_price_wei: int | None = None,
     gas_limit: int | None = None,
 ) -> dict[str, Any]:
+    private_key: str | None = None
     try:
+        private_key = get_private_key(name=key_name)
         chain = registry.resolve(network)
         client = EvmClient(chain)
         result = client.transfer_native(
@@ -67,6 +77,7 @@ def handle_transfer_native(
             exc,
             {
                 "network": network,
+                "key_name": key_name,
                 "private_key": private_key,
                 "to": to,
                 "amount": amount,
@@ -86,23 +97,73 @@ def get_balance(network: str | None, address: str, unit: str | None = None) -> d
 @mcp.tool()
 def transfer_native(
     network: str | None,
-    private_key: str,
     to: str,
     amount: str,
+    key_name: str | None = None,
     unit: str | None = "ether",
     gas_price_wei: int | None = None,
     gas_limit: int | None = None,
 ) -> dict[str, Any]:
-    """Transfer native CNX by signing a transaction with the provided private key."""
+    """Transfer native CNX using a named key or default local key."""
     return handle_transfer_native(
         network=network,
-        private_key=private_key,
         to=to,
         amount=amount,
+        key_name=key_name,
         unit=unit,
         gas_price_wei=gas_price_wei,
         gas_limit=gas_limit,
     )
+
+
+@mcp.tool()
+def create_key(name: str) -> dict[str, Any]:
+    """Create a new local signer key with the provided name."""
+    try:
+        result = create_local_key(name=name)
+        return _to_response_payload(result)
+    except Exception as exc:  # noqa: BLE001
+        raise _execution_error(exc, {"name": name}) from exc
+
+
+@mcp.tool()
+def list_keys() -> dict[str, Any]:
+    """List local signer key names and addresses."""
+    try:
+        keys = list_local_keys()
+        return _to_response_payload({"keys": keys, "count": len(keys)})
+    except Exception as exc:  # noqa: BLE001
+        raise _execution_error(exc) from exc
+
+
+@mcp.tool()
+def delete_key(name: str) -> dict[str, Any]:
+    """Delete a local signer key by name."""
+    try:
+        delete_local_key(name=name)
+        return _to_response_payload({"name": name, "deleted": True})
+    except Exception as exc:  # noqa: BLE001
+        raise _execution_error(exc, {"name": name}) from exc
+
+
+@mcp.tool()
+def set_default_key(name: str) -> dict[str, Any]:
+    """Set the default local signer key by name."""
+    try:
+        result = set_default_local_key(name=name)
+        return _to_response_payload(result)
+    except Exception as exc:  # noqa: BLE001
+        raise _execution_error(exc, {"name": name}) from exc
+
+
+@mcp.tool()
+def export_key(name: str, filename: str) -> dict[str, Any]:
+    """Export a named local signer key to a file path."""
+    try:
+        result = export_local_key(name=name, filename=filename)
+        return _to_response_payload(result)
+    except Exception as exc:  # noqa: BLE001
+        raise _execution_error(exc, {"name": name, "filename": filename}) from exc
 
 
 def run() -> None:

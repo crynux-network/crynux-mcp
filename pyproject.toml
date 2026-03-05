@@ -8,6 +8,7 @@ dependencies = [
   "mcp[cli]",
   "web3",
   "pydantic",
+  "keyring",
 ]
 
 [project.optional-dependencies]

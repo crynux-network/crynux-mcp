@@ -48,15 +48,46 @@ def test_handle_transfer_sanitizes_private_key_error(monkeypatch) -> None:  # ty
 
     monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
     monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
+    monkeypatch.setattr("crynux_mcp.server.get_private_key", lambda name=None: "0xabc")
 
     try:
         handle_transfer_native(
             network="dymension",
-            private_key="0xabc",
             to="0x1111111111111111111111111111111111111111",
             amount="1",
         )
     except RuntimeError as exc:
         assert str(exc) == "INVALID_PRIVATE_KEY: private key is invalid."
+    else:
+        raise AssertionError("Expected RuntimeError")
+
+
+def test_handle_transfer_requires_private_key_source(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    class FakeClient:
+        def __init__(self, _chain) -> None:
+            pass
+
+        def transfer_native(self, **_kwargs):
+            return object()
+
+    class FakeRegistry:
+        def resolve(self, _network):
+            return object()
+
+    monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
+    monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
+    monkeypatch.setattr(
+        "crynux_mcp.server.get_private_key",
+        lambda name=None: (_ for _ in ()).throw(ValueError("MISSING_PRIVATE_KEY: no signer key found.")),
+    )
+
+    try:
+        handle_transfer_native(
+            network="dymension",
+            to="0x1111111111111111111111111111111111111111",
+            amount="1",
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "MISSING_PRIVATE_KEY: no signer key found."
     else:
         raise AssertionError("Expected RuntimeError")
