@@ -48,6 +48,29 @@ class SetBeneficialAddressResult:
     chain_id: int
 
 
+@dataclass(frozen=True)
+class NodeStakingInfoResult:
+    network: str
+    node_address: str
+    staked_balance_wei: str
+    staked_balance_formatted: str
+    staked_credits: str
+    status: int
+    unstake_timestamp: str
+    contract_address: str
+    chain_id: int
+
+
+@dataclass(frozen=True)
+class NodeCreditsResult:
+    network: str
+    node_address: str
+    credits: str
+    credits_formatted: str
+    contract_address: str
+    chain_id: int
+
+
 def normalize_unit(unit: str | None) -> Unit:
     if unit is None:
         return "ether"

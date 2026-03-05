@@ -67,6 +67,37 @@ Output fields:
 - `contract_address`
 - `chain_id`
 
+## `get_node_staking_info`
+
+Inputs:
+- `network`: optional (`dymension` or `near`). Defaults to configured default network.
+- `node_address`: node wallet EVM address.
+
+Output fields:
+- `network`
+- `node_address`
+- `staked_balance_wei`
+- `staked_balance_formatted`
+- `staked_credits`
+- `status`: staking status enum value (`0` = unstaked, `1` = staked, `2` = pending unstake).
+- `unstake_timestamp`: unix timestamp in seconds as a string (`0` when unset).
+- `contract_address`
+- `chain_id`
+
+## `get_node_credits`
+
+Inputs:
+- `network`: optional (`dymension` or `near`). Defaults to configured default network.
+- `node_address`: node wallet EVM address to query credits for.
+
+Output fields:
+- `network`
+- `node_address`
+- `credits`
+- `credits_formatted`
+- `contract_address`
+- `chain_id`
+
 ## `create_key`
 
 Inputs:

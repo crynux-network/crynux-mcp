@@ -10,6 +10,8 @@ from web3.exceptions import TransactionNotFound
 from crynux_mcp.blockchain.schemas import (
     BalanceResult,
     BeneficialAddressResult,
+    NodeCreditsResult,
+    NodeStakingInfoResult,
     SetBeneficialAddressResult,
     TransferResult,
     Unit,
@@ -34,6 +36,39 @@ BENEFICIAL_ADDRESS_ABI: list[dict[str, Any]] = [
         "stateMutability": "nonpayable",
         "type": "function",
     },
+]
+
+NODE_STAKING_ABI: list[dict[str, Any]] = [
+    {
+        "inputs": [{"internalType": "address", "name": "nodeAddress", "type": "address"}],
+        "name": "getStakingInfo",
+        "outputs": [
+            {
+                "components": [
+                    {"internalType": "address", "name": "nodeAddress", "type": "address"},
+                    {"internalType": "uint256", "name": "stakedBalance", "type": "uint256"},
+                    {"internalType": "uint256", "name": "stakedCredits", "type": "uint256"},
+                    {"internalType": "uint8", "name": "status", "type": "uint8"},
+                    {"internalType": "uint256", "name": "unstakeTimestamp", "type": "uint256"},
+                ],
+                "internalType": "struct NodeStaking.StakingInfo",
+                "name": "",
+                "type": "tuple",
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function",
+    }
+]
+
+CREDITS_ABI: list[dict[str, Any]] = [
+    {
+        "inputs": [{"internalType": "address", "name": "addr", "type": "address"}],
+        "name": "getCredits",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    }
 ]
 
 
@@ -161,6 +196,45 @@ class EvmClient:
             chain_id=self.chain.chain_id,
         )
 
+    def get_node_staking_info(self, node_address: str) -> NodeStakingInfoResult:
+        node_checksum = self._validate_address(node_address)
+        contract_address, contract = self._get_contract(
+            contract_key="node_staking",
+            abi=NODE_STAKING_ABI,
+        )
+        staking_info = contract.functions.getStakingInfo(node_checksum).call()
+        staking_node_address = self._validate_address(
+            str(getattr(staking_info, "nodeAddress", None) or staking_info[0] or node_checksum)
+        )
+        staked_balance_wei = int(getattr(staking_info, "stakedBalance", None) or staking_info[1] or 0)
+        staked_credits = int(getattr(staking_info, "stakedCredits", None) or staking_info[2] or 0)
+        status = int(getattr(staking_info, "status", None) or staking_info[3] or 0)
+        unstake_timestamp = int(getattr(staking_info, "unstakeTimestamp", None) or staking_info[4] or 0)
+        return NodeStakingInfoResult(
+            network=self.chain.network_key,
+            node_address=staking_node_address,
+            staked_balance_wei=str(staked_balance_wei),
+            staked_balance_formatted=str(Web3.from_wei(staked_balance_wei, "ether")),
+            staked_credits=str(staked_credits),
+            status=status,
+            unstake_timestamp=str(unstake_timestamp),
+            contract_address=contract_address,
+            chain_id=self.chain.chain_id,
+        )
+
+    def get_node_credits(self, node_address: str) -> NodeCreditsResult:
+        account_address = self._validate_address(node_address)
+        contract_address, contract = self._get_contract(contract_key="credits", abi=CREDITS_ABI)
+        credits = int(contract.functions.getCredits(account_address).call())
+        return NodeCreditsResult(
+            network=self.chain.network_key,
+            node_address=account_address,
+            credits=str(credits),
+            credits_formatted=str(Web3.from_wei(credits, "ether")),
+            contract_address=contract_address,
+            chain_id=self.chain.chain_id,
+        )
+
     def get_transaction_receipt(self, tx_hash: str) -> dict[str, Any]:
         try:
             receipt = self.w3.eth.get_transaction_receipt(tx_hash)
@@ -185,9 +259,12 @@ class EvmClient:
             raise ValueError("INVALID_PRIVATE_KEY: private key is invalid.") from exc
 
     def _get_beneficial_contract(self) -> tuple[str, Any]:
-        raw_address = str(self.chain.contracts.get("beneficial_address", "")).strip()
+        return self._get_contract(contract_key="beneficial_address", abi=BENEFICIAL_ADDRESS_ABI)
+
+    def _get_contract(self, contract_key: str, abi: list[dict[str, Any]]) -> tuple[str, Any]:
+        raw_address = str(self.chain.contracts.get(contract_key, "")).strip()
         if not raw_address:
-            raise ValueError("MISSING_CONTRACT_ADDRESS: beneficial_address contract is not configured.")
+            raise ValueError(f"MISSING_CONTRACT_ADDRESS: {contract_key} contract is not configured.")
         contract_address = self._validate_address(raw_address)
-        contract = self.w3.eth.contract(address=contract_address, abi=BENEFICIAL_ADDRESS_ABI)
+        contract = self.w3.eth.contract(address=contract_address, abi=abi)
         return contract_address, contract

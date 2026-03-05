@@ -131,6 +131,26 @@ def handle_set_beneficial_address(
         ) from exc
 
 
+def handle_get_node_staking_info(network: str | None, node_address: str) -> dict[str, Any]:
+    try:
+        chain = registry.resolve(network)
+        client = EvmClient(chain)
+        result = client.get_node_staking_info(node_address=node_address)
+        return _to_response_payload(result)
+    except Exception as exc:  # noqa: BLE001
+        raise _execution_error(exc, {"network": network, "node_address": node_address}) from exc
+
+
+def handle_get_node_credits(network: str | None, node_address: str) -> dict[str, Any]:
+    try:
+        chain = registry.resolve(network)
+        client = EvmClient(chain)
+        result = client.get_node_credits(node_address=node_address)
+        return _to_response_payload(result)
+    except Exception as exc:  # noqa: BLE001
+        raise _execution_error(exc, {"network": network, "node_address": node_address}) from exc
+
+
 @mcp.tool()
 def get_balance(network: str | None, address: str, unit: str | None = None) -> dict[str, Any]:
     """Get native CNX balance on a selected Crynux EVM network."""
@@ -181,6 +201,18 @@ def set_beneficial_address(
         gas_price_wei=gas_price_wei,
         gas_limit=gas_limit,
     )
+
+
+@mcp.tool()
+def get_node_staking_info(network: str | None, node_address: str) -> dict[str, Any]:
+    """Get staking information for a node wallet address."""
+    return handle_get_node_staking_info(network=network, node_address=node_address)
+
+
+@mcp.tool()
+def get_node_credits(network: str | None, node_address: str) -> dict[str, Any]:
+    """Get node credits balance for a node wallet address."""
+    return handle_get_node_credits(network=network, node_address=node_address)
 
 
 @mcp.tool()

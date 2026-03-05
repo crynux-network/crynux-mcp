@@ -7,6 +7,8 @@ MCP server for Crynux Network operations.
 - Native CNX balance query on Crynux EVM networks
 - Native CNX transfer signed by a private key from local system keychain
 - Beneficial address query and on-chain update
+- Node staking query
+- Node credits query
 - Relay API integration is not implemented yet
 
 ## Spec and transport
@@ -31,6 +33,14 @@ Query the configured beneficial address for an operational EVM address.
 ### `set_beneficial_address`
 
 Submit an on-chain transaction to set a beneficial address.
+
+### `get_node_staking_info`
+
+Query node staking details.
+
+### `get_node_credits`
+
+Query node credits.
 
 ### `create_key`
 
@@ -166,6 +176,8 @@ In your AI client, check MCP tool list and confirm these tools appear:
 - `transfer_native`
 - `get_beneficial_address`
 - `set_beneficial_address`
+- `get_node_staking_info`
+- `get_node_credits`
 
 ### Step 7) First tool calls
 
@@ -193,6 +205,16 @@ Example: set beneficial address
 - `network`: `dymension`
 - `key_name`: `main` (optional, uses default local key if omitted)
 - `beneficial_address`: your payout EVM address
+
+Example: query node staking info
+
+- `network`: `dymension`
+- `node_address`: your node wallet EVM address
+
+Example: query node credits
+
+- `network`: `dymension`
+- `node_address`: your node wallet EVM address
 
 Signer key source for transfer:
 

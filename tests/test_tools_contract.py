@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from crynux_mcp.server import (
     handle_get_balance,
     handle_get_beneficial_address,
+    handle_get_node_credits,
+    handle_get_node_staking_info,
     handle_set_beneficial_address,
     handle_transfer_native,
 )
@@ -163,4 +165,76 @@ def test_handle_set_beneficial_address_shape(monkeypatch) -> None:  # type: igno
     )
     assert payload["tx_hash"] == "0xabc"
     assert payload["beneficial_address"] == "0x2222222222222222222222222222222222222222"
+    assert "text" in payload
+
+
+def test_handle_get_node_staking_info_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    @dataclass(frozen=True)
+    class FakeResult:
+        network: str = "dymension"
+        node_address: str = "0x1111111111111111111111111111111111111111"
+        staked_balance_wei: str = "1000000000000000000"
+        staked_balance_formatted: str = "1"
+        staked_credits: str = "2"
+        status: int = 1
+        unstake_timestamp: str = "0"
+        contract_address: str = "0x3333333333333333333333333333333333333333"
+        chain_id: int = 1313161573
+
+    class FakeClient:
+        def __init__(self, _chain) -> None:
+            pass
+
+        def get_node_staking_info(self, node_address: str):
+            _ = node_address
+            return FakeResult()
+
+    class FakeRegistry:
+        def resolve(self, _network):
+            return object()
+
+    monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
+    monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
+
+    payload = handle_get_node_staking_info(
+        network="dymension",
+        node_address="0x1111111111111111111111111111111111111111",
+    )
+    assert payload["staked_balance_wei"] == "1000000000000000000"
+    assert payload["staked_credits"] == "2"
+    assert payload["status"] == 1
+    assert "text" in payload
+
+
+def test_handle_get_node_credits_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    @dataclass(frozen=True)
+    class FakeResult:
+        network: str = "dymension"
+        node_address: str = "0x1111111111111111111111111111111111111111"
+        credits: str = "123"
+        credits_formatted: str = "0.000000000000000123"
+        contract_address: str = "0x3333333333333333333333333333333333333333"
+        chain_id: int = 1313161573
+
+    class FakeClient:
+        def __init__(self, _chain) -> None:
+            pass
+
+        def get_node_credits(self, node_address: str):
+            _ = node_address
+            return FakeResult()
+
+    class FakeRegistry:
+        def resolve(self, _network):
+            return object()
+
+    monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
+    monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
+
+    payload = handle_get_node_credits(
+        network="dymension",
+        node_address="0x1111111111111111111111111111111111111111",
+    )
+    assert payload["credits"] == "123"
+    assert payload["credits_formatted"] == "0.000000000000000123"
     assert "text" in payload
