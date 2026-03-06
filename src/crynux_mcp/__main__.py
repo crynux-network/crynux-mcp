@@ -73,7 +73,11 @@ def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
     if args.command == "key":
-        raise SystemExit(_run_key_command(args))
+        try:
+            raise SystemExit(_run_key_command(args))
+        except ValueError as exc:
+            print(str(exc))
+            raise SystemExit(1) from exc
     run()
 
 

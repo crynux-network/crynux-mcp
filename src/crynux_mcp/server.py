@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import json
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -9,8 +8,13 @@ from mcp.server.fastmcp import FastMCP
 from crynux_mcp.blockchain.evm_client import EvmClient
 from crynux_mcp.config.loader import load_chain_registry
 from crynux_mcp.relay.auth import RelayAuthManager
-from crynux_mcp.relay.client import RelayApiClient, select_latest_record
+from crynux_mcp.relay.client import RelayApiClient
 from crynux_mcp.relay.config import load_relay_config
+from crynux_mcp.relay.models import (
+    RelayAccountBalanceResult,
+    RelayAuthTokenResult,
+    RelayLatestStatusResult,
+)
 from crynux_mcp.security.key_store import (
     create_key as create_local_key,
     delete_key as delete_local_key,
@@ -20,6 +24,7 @@ from crynux_mcp.security.key_store import (
     set_default_key as set_default_local_key,
 )
 from crynux_mcp.security.redaction import redact_secrets, sanitize_error_message
+from crynux_mcp.security.schemas import KeyDeleteResult, KeyListResult
 
 mcp = FastMCP("crynux-mcp")
 registry = load_chain_registry()
@@ -32,10 +37,9 @@ def _to_response_payload(value: Any) -> dict[str, Any]:
     if is_dataclass(value):
         payload = asdict(value)
     elif isinstance(value, dict):
-        payload = value
+        payload = dict(value)
     else:
         payload = {"value": value}
-    payload["text"] = json.dumps(payload, ensure_ascii=True)
     return payload
 
 
@@ -45,14 +49,40 @@ def _execution_error(exc: Exception, args: dict[str, Any] | None = None) -> Runt
     return RuntimeError(message)
 
 
-def handle_get_balance(network: str | None, address: str, unit: str | None = None) -> dict[str, Any]:
+def _address_from_key_name(key_name: str) -> str:
+    normalized = (key_name or "").strip()
+    if not normalized:
+        raise ValueError("INVALID_KEY_NAME: key name is required.")
+    for key in list_local_keys():
+        if key.get("name") == normalized:
+            address = str(key.get("address") or "").strip()
+            if address:
+                return address
+            break
+    raise ValueError(f"KEY_NOT_FOUND: key '{normalized}' does not exist.")
+
+
+def _resolve_address(address: str | None = None, key_name: str | None = None) -> str:
+    if key_name is not None:
+        return _address_from_key_name(key_name)
+    resolved = (address or "").strip()
+    if resolved:
+        return resolved
+    raise ValueError("INVALID_ADDRESS: provide either 'address' or 'key_name'.")
+
+
+def handle_get_balance(
+    network: str | None,
+    address: str | None = None,
+    key_name: str | None = None,
+) -> dict[str, Any]:
     try:
         chain = registry.resolve(network)
         client = EvmClient(chain)
-        result = client.get_balance(address=address, unit=unit)
-        return _to_response_payload(result)
+        resolved_address = _resolve_address(address=address, key_name=key_name)
+        return _to_response_payload(client.get_balance(address=resolved_address))
     except Exception as exc:  # noqa: BLE001
-        raise _execution_error(exc, {"network": network, "address": address, "unit": unit}) from exc
+        raise _execution_error(exc, {"network": network, "address": address, "key_name": key_name}) from exc
 
 
 def handle_transfer_native(
@@ -94,14 +124,18 @@ def handle_transfer_native(
         ) from exc
 
 
-def handle_get_beneficial_address(network: str | None, node_address: str) -> dict[str, Any]:
+def handle_get_beneficial_address(
+    network: str | None,
+    address: str | None = None,
+    key_name: str | None = None,
+) -> dict[str, Any]:
     try:
         chain = registry.resolve(network)
         client = EvmClient(chain)
-        result = client.get_beneficial_address(node_address=node_address)
-        return _to_response_payload(result)
+        resolved_address = _resolve_address(address=address, key_name=key_name)
+        return _to_response_payload(client.get_beneficial_address(node_address=resolved_address))
     except Exception as exc:  # noqa: BLE001
-        raise _execution_error(exc, {"network": network, "node_address": node_address}) from exc
+        raise _execution_error(exc, {"network": network, "address": address, "key_name": key_name}) from exc
 
 
 def handle_set_beneficial_address(
@@ -137,24 +171,32 @@ def handle_set_beneficial_address(
         ) from exc
 
 
-def handle_get_node_staking_info(network: str | None, node_address: str) -> dict[str, Any]:
+def handle_get_node_staking_info(
+    network: str | None,
+    address: str | None = None,
+    key_name: str | None = None,
+) -> dict[str, Any]:
     try:
         chain = registry.resolve(network)
         client = EvmClient(chain)
-        result = client.get_node_staking_info(node_address=node_address)
-        return _to_response_payload(result)
+        resolved_address = _resolve_address(address=address, key_name=key_name)
+        return _to_response_payload(client.get_node_staking_info(node_address=resolved_address))
     except Exception as exc:  # noqa: BLE001
-        raise _execution_error(exc, {"network": network, "node_address": node_address}) from exc
+        raise _execution_error(exc, {"network": network, "address": address, "key_name": key_name}) from exc
 
 
-def handle_get_node_credits(network: str | None, node_address: str) -> dict[str, Any]:
+def handle_get_node_credits(
+    network: str | None,
+    address: str | None = None,
+    key_name: str | None = None,
+) -> dict[str, Any]:
     try:
         chain = registry.resolve(network)
         client = EvmClient(chain)
-        result = client.get_node_credits(node_address=node_address)
-        return _to_response_payload(result)
+        resolved_address = _resolve_address(address=address, key_name=key_name)
+        return _to_response_payload(client.get_node_credits(node_address=resolved_address))
     except Exception as exc:  # noqa: BLE001
-        raise _execution_error(exc, {"network": network, "node_address": node_address}) from exc
+        raise _execution_error(exc, {"network": network, "address": address, "key_name": key_name}) from exc
 
 
 def _resolve_network_key(network: str | None) -> str:
@@ -162,34 +204,40 @@ def _resolve_network_key(network: str | None) -> str:
     return chain.network_key
 
 
-def _get_relay_token(address: str, key_name: str | None = None, force_refresh: bool = False) -> dict[str, Any]:
+def _resolve_relay_withdraw_destination(
+    network: str | None,
+    address: str | None = None,
+    key_name: str | None = None,
+) -> tuple[str, str, str]:
+    chain = registry.resolve(network)
+    client = EvmClient(chain)
+    resolved_address = _resolve_address(address=address, key_name=key_name)
+    beneficial_result = client.get_beneficial_address(node_address=resolved_address)
+    destination = beneficial_result.beneficial_address if beneficial_result.is_set else resolved_address
+    return chain.network_key, resolved_address, destination
+
+
+def _get_relay_token(address: str, key_name: str | None = None, force_refresh: bool = False) -> RelayAuthTokenResult:
     session = relay_auth.get_valid_session(
         address=address,
         key_name=key_name,
         api=relay_client,
         force_refresh=force_refresh,
     )
-    return {"address": session.address, "token": session.token, "expires_at": session.expires_at}
+    return RelayAuthTokenResult.from_session(session, refreshed=bool(force_refresh))
 
 
 def handle_relay_get_auth_token(
     network: str | None,
-    address: str,
+    address: str | None = None,
     key_name: str | None = None,
     force_refresh: bool = False,
 ) -> dict[str, Any]:
     try:
-        network_key = _resolve_network_key(network)
-        token_info = _get_relay_token(address=address, key_name=key_name, force_refresh=force_refresh)
-        return _to_response_payload(
-            {
-                "network": network_key,
-                "address": token_info["address"],
-                "token": token_info["token"],
-                "expires_at": token_info["expires_at"],
-                "refreshed": bool(force_refresh),
-            }
-        )
+        _ = _resolve_network_key(network)
+        resolved_address = _resolve_address(address=address, key_name=key_name)
+        token_info = _get_relay_token(address=resolved_address, key_name=key_name, force_refresh=force_refresh)
+        return _to_response_payload(token_info)
     except Exception as exc:  # noqa: BLE001
         raise _execution_error(
             exc,
@@ -198,50 +246,44 @@ def handle_relay_get_auth_token(
 
 
 def handle_relay_get_account_balance(
-    network: str | None,
-    address: str,
+    address: str | None = None,
     key_name: str | None = None,
 ) -> dict[str, Any]:
     token: str | None = None
     try:
-        network_key = _resolve_network_key(network)
-        token_info = _get_relay_token(address=address, key_name=key_name)
-        token = token_info["token"]
-        balance_wei = relay_client.get_account_balance(address=address, token=token)
-        return _to_response_payload(
-            {
-                "network": network_key,
-                "address": token_info["address"],
-                "balance_wei": balance_wei,
-                "token_expires_at": token_info["expires_at"],
-            }
-        )
+        resolved_address = _resolve_address(address=address, key_name=key_name)
+        token_info = _get_relay_token(address=resolved_address, key_name=key_name)
+        token = token_info.token
+        balance_wei = relay_client.get_account_balance(address=resolved_address, token=token)
+        return _to_response_payload(RelayAccountBalanceResult.create(balance_wei=balance_wei))
     except Exception as exc:  # noqa: BLE001
-        raise _execution_error(exc, {"network": network, "address": address, "key_name": key_name, "token": token}) from exc
+        raise _execution_error(exc, {"address": address, "key_name": key_name, "token": token}) from exc
 
 
 def handle_relay_withdraw_create(
     network: str | None,
-    address: str,
     amount_wei: str,
-    benefit_address: str | None = None,
+    address: str | None = None,
     key_name: str | None = None,
 ) -> dict[str, Any]:
     token: str | None = None
     signature: str | None = None
     try:
-        network_key = _resolve_network_key(network)
-        token_info = _get_relay_token(address=address, key_name=key_name)
-        token = token_info["token"]
-        destination = (benefit_address or address).strip()
-        action = f"Withdraw {amount_wei} from {address} to {destination} on {network_key}"
-        timestamp, signature = relay_auth.sign_action(
+        network_key, resolved_address, destination = _resolve_relay_withdraw_destination(
+            network=network,
             address=address,
+            key_name=key_name,
+        )
+        token_info = _get_relay_token(address=resolved_address, key_name=key_name)
+        token = token_info.token
+        action = f"Withdraw {amount_wei} from {resolved_address} to {destination} on {network_key}"
+        timestamp, signature = relay_auth.sign_action(
+            address=resolved_address,
             action=action,
             key_name=key_name,
         )
         result = relay_client.create_withdraw(
-            address=address,
+            address=resolved_address,
             amount=amount_wei,
             benefit_address=destination,
             network=network_key,
@@ -249,16 +291,7 @@ def handle_relay_withdraw_create(
             signature=signature,
             token=token,
         )
-        return _to_response_payload(
-            {
-                "network": network_key,
-                "address": address,
-                "amount_wei": amount_wei,
-                "benefit_address": destination,
-                "timestamp": timestamp,
-                "result": result,
-            }
-        )
+        return _to_response_payload(result)
     except Exception as exc:  # noqa: BLE001
         raise _execution_error(
             exc,
@@ -266,7 +299,6 @@ def handle_relay_withdraw_create(
                 "network": network,
                 "address": address,
                 "amount_wei": amount_wei,
-                "benefit_address": benefit_address,
                 "key_name": key_name,
                 "token": token,
                 "signature": signature,
@@ -275,134 +307,98 @@ def handle_relay_withdraw_create(
 
 
 def handle_relay_withdraw_list(
-    network: str | None,
-    address: str,
+    address: str | None = None,
     page: int = 1,
     page_size: int = 10,
     key_name: str | None = None,
 ) -> dict[str, Any]:
     token: str | None = None
     try:
-        network_key = _resolve_network_key(network)
-        token_info = _get_relay_token(address=address, key_name=key_name)
-        token = token_info["token"]
-        result = relay_client.list_withdraws(address=address, page=page, page_size=page_size, token=token)
-        return _to_response_payload(
-            {
-                "network": network_key,
-                "address": address,
-                "page": page,
-                "page_size": page_size,
-                "total": int(result.get("total", 0) or 0),
-                "withdraw_records": result.get("withdraw_records", []),
-            }
-        )
+        resolved_address = _resolve_address(address=address, key_name=key_name)
+        token_info = _get_relay_token(address=resolved_address, key_name=key_name)
+        token = token_info.token
+        result = relay_client.list_withdraws(address=resolved_address, page=page, page_size=page_size, token=token)
+        return _to_response_payload(result)
     except Exception as exc:  # noqa: BLE001
         raise _execution_error(
             exc,
-            {"network": network, "address": address, "page": page, "page_size": page_size, "key_name": key_name, "token": token},
+            {"address": address, "page": page, "page_size": page_size, "key_name": key_name, "token": token},
         ) from exc
 
 
 def handle_relay_withdraw_latest_status(
     network: str | None,
-    address: str,
+    address: str | None = None,
     scan_page_size: int = 20,
     key_name: str | None = None,
 ) -> dict[str, Any]:
+    token: str | None = None
     try:
-        payload = handle_relay_withdraw_list(
-            network=network,
-            address=address,
-            page=1,
-            page_size=scan_page_size,
-            key_name=key_name,
-        )
-        records = payload.get("withdraw_records", [])
-        if not isinstance(records, list):
-            records = []
-        latest = select_latest_record([item for item in records if isinstance(item, dict)])
-        status = str(latest.get("status", "")) if latest else ""
-        return _to_response_payload(
-            {
-                "network": payload.get("network"),
-                "address": payload.get("address"),
-                "kind": "withdraw",
-                "status": status,
-                "found": latest is not None,
-                "latest_record": latest or {},
-            }
-        )
+        _ = _resolve_network_key(network)
+        resolved_address = _resolve_address(address=address, key_name=key_name)
+        token_info = _get_relay_token(address=resolved_address, key_name=key_name)
+        token = token_info.token
+        result = relay_client.list_withdraws(address=resolved_address, page=1, page_size=scan_page_size, token=token)
+        records = result.withdraw_records
+        return _to_response_payload(RelayLatestStatusResult.from_records(kind="withdraw", records=records))
     except Exception as exc:  # noqa: BLE001
         raise _execution_error(
             exc,
-            {"network": network, "address": address, "scan_page_size": scan_page_size, "key_name": key_name},
+            {
+                "network": network,
+                "address": address,
+                "scan_page_size": scan_page_size,
+                "key_name": key_name,
+                "token": token,
+            },
         ) from exc
 
 
 def handle_relay_deposit_list(
-    network: str | None,
-    address: str,
+    address: str | None = None,
     page: int = 1,
     page_size: int = 10,
     key_name: str | None = None,
 ) -> dict[str, Any]:
     token: str | None = None
     try:
-        network_key = _resolve_network_key(network)
-        token_info = _get_relay_token(address=address, key_name=key_name)
-        token = token_info["token"]
-        result = relay_client.list_deposits(address=address, page=page, page_size=page_size, token=token)
-        return _to_response_payload(
-            {
-                "network": network_key,
-                "address": address,
-                "page": page,
-                "page_size": page_size,
-                "total": int(result.get("total", 0) or 0),
-                "deposit_records": result.get("deposit_records", []),
-            }
-        )
+        resolved_address = _resolve_address(address=address, key_name=key_name)
+        token_info = _get_relay_token(address=resolved_address, key_name=key_name)
+        token = token_info.token
+        result = relay_client.list_deposits(address=resolved_address, page=page, page_size=page_size, token=token)
+        return _to_response_payload(result)
     except Exception as exc:  # noqa: BLE001
         raise _execution_error(
             exc,
-            {"network": network, "address": address, "page": page, "page_size": page_size, "key_name": key_name, "token": token},
+            {"address": address, "page": page, "page_size": page_size, "key_name": key_name, "token": token},
         ) from exc
 
 
 def handle_relay_deposit_latest_status(
     network: str | None,
-    address: str,
+    address: str | None = None,
     scan_page_size: int = 20,
     key_name: str | None = None,
 ) -> dict[str, Any]:
+    token: str | None = None
     try:
-        payload = handle_relay_deposit_list(
-            network=network,
-            address=address,
-            page=1,
-            page_size=scan_page_size,
-            key_name=key_name,
-        )
-        records = payload.get("deposit_records", [])
-        if not isinstance(records, list):
-            records = []
-        latest = select_latest_record([item for item in records if isinstance(item, dict)])
-        status = str(latest.get("status", "")) if latest else ""
-        return _to_response_payload(
-            {
-                "network": payload.get("network"),
-                "address": payload.get("address"),
-                "kind": "deposit",
-                "status": status,
-                "found": latest is not None,
-                "latest_record": latest or {},
-            }
-        )
+        _ = _resolve_network_key(network)
+        resolved_address = _resolve_address(address=address, key_name=key_name)
+        token_info = _get_relay_token(address=resolved_address, key_name=key_name)
+        token = token_info.token
+        result = relay_client.list_deposits(address=resolved_address, page=1, page_size=scan_page_size, token=token)
+        records = result.deposit_records
+        return _to_response_payload(RelayLatestStatusResult.from_records(kind="deposit", records=records))
     except Exception as exc:  # noqa: BLE001
         raise _execution_error(
             exc,
-            {"network": network, "address": address, "scan_page_size": scan_page_size, "key_name": key_name},
+            {
+                "network": network,
+                "address": address,
+                "scan_page_size": scan_page_size,
+                "key_name": key_name,
+                "token": token,
+            },
         ) from exc
 
 
@@ -428,11 +424,7 @@ def handle_relay_deposit_initiate(
             gas_price_wei=gas_price_wei,
             gas_limit=gas_limit,
         )
-        payload = _to_response_payload(transfer_result)
-        payload["deposit_address"] = deposit_address
-        payload["network"] = chain.network_key
-        payload["text"] = json.dumps(payload, ensure_ascii=True)
-        return payload
+        return _to_response_payload(transfer_result)
     except Exception as exc:  # noqa: BLE001
         raise _execution_error(
             exc,
@@ -449,9 +441,13 @@ def handle_relay_deposit_initiate(
 
 
 @mcp.tool()
-def get_balance(network: str | None, address: str, unit: str | None = None) -> dict[str, Any]:
+def get_balance(
+    network: str | None,
+    address: str | None = None,
+    key_name: str | None = None,
+) -> dict[str, Any]:
     """Get native CNX balance on a selected Crynux EVM network."""
-    return handle_get_balance(network=network, address=address, unit=unit)
+    return handle_get_balance(network=network, address=address, key_name=key_name)
 
 
 @mcp.tool()
@@ -477,9 +473,13 @@ def transfer_native(
 
 
 @mcp.tool()
-def get_beneficial_address(network: str | None, node_address: str) -> dict[str, Any]:
+def get_beneficial_address(
+    network: str | None,
+    address: str | None = None,
+    key_name: str | None = None,
+) -> dict[str, Any]:
     """Get beneficial address for an operational node wallet."""
-    return handle_get_beneficial_address(network=network, node_address=node_address)
+    return handle_get_beneficial_address(network=network, address=address, key_name=key_name)
 
 
 @mcp.tool()
@@ -501,33 +501,39 @@ def set_beneficial_address(
 
 
 @mcp.tool()
-def get_node_staking_info(network: str | None, node_address: str) -> dict[str, Any]:
+def get_node_staking_info(
+    network: str | None,
+    address: str | None = None,
+    key_name: str | None = None,
+) -> dict[str, Any]:
     """Get staking information for a node wallet address."""
-    return handle_get_node_staking_info(network=network, node_address=node_address)
+    return handle_get_node_staking_info(network=network, address=address, key_name=key_name)
 
 
 @mcp.tool()
-def get_node_credits(network: str | None, node_address: str) -> dict[str, Any]:
+def get_node_credits(
+    network: str | None,
+    address: str | None = None,
+    key_name: str | None = None,
+) -> dict[str, Any]:
     """Get node credits balance for a node wallet address."""
-    return handle_get_node_credits(network=network, node_address=node_address)
+    return handle_get_node_credits(network=network, address=address, key_name=key_name)
 
 
 @mcp.tool()
 def relay_get_account_balance(
-    network: str | None,
-    address: str,
+    address: str | None = None,
     key_name: str | None = None,
 ) -> dict[str, Any]:
     """Get Relay account balance in wei for an EVM address."""
-    return handle_relay_get_account_balance(network=network, address=address, key_name=key_name)
+    return handle_relay_get_account_balance(address=address, key_name=key_name)
 
 
 @mcp.tool()
 def relay_withdraw_create(
     network: str | None,
-    address: str,
     amount_wei: str,
-    benefit_address: str | None = None,
+    address: str | None = None,
     key_name: str | None = None,
 ) -> dict[str, Any]:
     """Create a Relay withdraw request signed by the local key."""
@@ -535,22 +541,19 @@ def relay_withdraw_create(
         network=network,
         address=address,
         amount_wei=amount_wei,
-        benefit_address=benefit_address,
         key_name=key_name,
     )
 
 
 @mcp.tool()
 def relay_withdraw_list(
-    network: str | None,
-    address: str,
+    address: str | None = None,
     page: int = 1,
     page_size: int = 10,
     key_name: str | None = None,
 ) -> dict[str, Any]:
     """List Relay withdraw requests for an address."""
     return handle_relay_withdraw_list(
-        network=network,
         address=address,
         page=page,
         page_size=page_size,
@@ -561,11 +564,11 @@ def relay_withdraw_list(
 @mcp.tool()
 def relay_withdraw_latest_status(
     network: str | None,
-    address: str,
+    address: str | None = None,
     scan_page_size: int = 20,
     key_name: str | None = None,
 ) -> dict[str, Any]:
-    """Get latest status from Relay withdraw records."""
+    """Get latest status from Relay withdraw records (0=Processing, 1=Success, 2=Failed)."""
     return handle_relay_withdraw_latest_status(
         network=network,
         address=address,
@@ -596,15 +599,13 @@ def relay_deposit_initiate(
 
 @mcp.tool()
 def relay_deposit_list(
-    network: str | None,
-    address: str,
+    address: str | None = None,
     page: int = 1,
     page_size: int = 10,
     key_name: str | None = None,
 ) -> dict[str, Any]:
     """List Relay deposit records for an address."""
     return handle_relay_deposit_list(
-        network=network,
         address=address,
         page=page,
         page_size=page_size,
@@ -615,11 +616,11 @@ def relay_deposit_list(
 @mcp.tool()
 def relay_deposit_latest_status(
     network: str | None,
-    address: str,
+    address: str | None = None,
     scan_page_size: int = 20,
     key_name: str | None = None,
 ) -> dict[str, Any]:
-    """Get latest status from Relay deposit records."""
+    """Get latest status from Relay deposit records (0=Processing, 1=Success, 2=Failed)."""
     return handle_relay_deposit_latest_status(
         network=network,
         address=address,
@@ -643,7 +644,7 @@ def list_keys() -> dict[str, Any]:
     """List local signer key names and addresses."""
     try:
         keys = list_local_keys()
-        return _to_response_payload({"keys": keys, "count": len(keys)})
+        return _to_response_payload(KeyListResult.from_keys(keys))
     except Exception as exc:  # noqa: BLE001
         raise _execution_error(exc) from exc
 
@@ -653,7 +654,7 @@ def delete_key(name: str) -> dict[str, Any]:
     """Delete a local signer key by name."""
     try:
         delete_local_key(name=name)
-        return _to_response_payload({"name": name, "deleted": True})
+        return _to_response_payload(KeyDeleteResult.from_name(name))
     except Exception as exc:  # noqa: BLE001
         raise _execution_error(exc, {"name": name}) from exc
 

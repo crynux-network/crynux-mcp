@@ -7,6 +7,7 @@ from typing import Callable, Protocol
 
 from eth_account import Account
 from eth_account.messages import encode_defunct
+from eth_utils import is_address, to_checksum_address
 import keyring
 
 from crynux_mcp.relay.models import RelayAuthSession
@@ -132,15 +133,13 @@ class RelayAuthManager:
         candidate = (address or "").strip()
         if not candidate:
             raise ValueError("INVALID_ADDRESS: address is required.")
-        if not candidate.startswith("0x"):
+        if not is_address(candidate):
             raise ValueError("INVALID_ADDRESS: address must be a valid EVM address.")
-        if len(candidate) != 42:
-            raise ValueError("INVALID_ADDRESS: address must be a valid EVM address.")
-        return candidate.lower()
+        return to_checksum_address(candidate)
 
     def _address_from_private_key(self, private_key: str) -> str:
         try:
             account = Account.from_key(private_key)
         except Exception as exc:  # noqa: BLE001
             raise ValueError("INVALID_PRIVATE_KEY: private key is invalid.") from exc
-        return account.address.lower()
+        return to_checksum_address(account.address)

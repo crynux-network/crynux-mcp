@@ -6,7 +6,6 @@ def test_create_key_tool_returns_shape(monkeypatch) -> None:  # type: ignore[no-
     payload = create_key("alice")
     assert payload["name"] == "alice"
     assert payload["address"] == "0xabc"
-    assert "text" in payload
 
 
 def test_list_keys_tool_returns_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -17,7 +16,6 @@ def test_list_keys_tool_returns_shape(monkeypatch) -> None:  # type: ignore[no-u
     payload = list_keys()
     assert payload["count"] == 1
     assert payload["keys"][0]["name"] == "alice"
-    assert "text" in payload
 
 
 def test_delete_key_tool_returns_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -25,7 +23,6 @@ def test_delete_key_tool_returns_shape(monkeypatch) -> None:  # type: ignore[no-
     payload = delete_key("alice")
     assert payload["name"] == "alice"
     assert payload["deleted"] is True
-    assert "text" in payload
 
 
 def test_set_default_key_tool_returns_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -36,7 +33,6 @@ def test_set_default_key_tool_returns_shape(monkeypatch) -> None:  # type: ignor
     payload = set_default_key("alice")
     assert payload["name"] == "alice"
     assert payload["is_default"] is True
-    assert "text" in payload
 
 
 def test_export_key_tool_returns_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -48,4 +44,3 @@ def test_export_key_tool_returns_shape(monkeypatch) -> None:  # type: ignore[no-
     assert payload["name"] == "alice"
     assert payload["filename"] == "/tmp/alice.key"
     assert payload["written"] is True
-    assert "text" in payload

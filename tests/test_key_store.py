@@ -60,7 +60,7 @@ def test_get_private_key_by_name(monkeypatch, tmp_path: Path) -> None:
 
     raw = Account.create().key.hex()
     add_key(name="main", private_key=raw)
-    assert get_private_key(name="main") == raw
+    assert get_private_key(name="main") == f"0x{raw}"
 
 
 def test_get_private_key_falls_back_to_env(monkeypatch, tmp_path: Path) -> None:
@@ -123,7 +123,7 @@ def test_export_key_writes_private_key_file(monkeypatch, tmp_path: Path) -> None
     output = tmp_path / "exports" / "alice.key"
 
     record = export_key(name="alice", filename=str(output))
-    assert output.read_text(encoding="utf-8") == raw
+    assert output.read_text(encoding="utf-8") == f"0x{raw}"
     assert record["name"] == "alice"
     assert record["filename"] == str(output.resolve())
     assert record["written"] is True
@@ -140,3 +140,15 @@ def test_get_private_key_raises_when_missing(monkeypatch, tmp_path: Path) -> Non
         assert "MISSING_PRIVATE_KEY" in str(exc)
     else:
         raise AssertionError("Expected ValueError")
+
+
+def test_add_key_accepts_hex_key_with_0x_prefix(monkeypatch, tmp_path: Path) -> None:
+    storage = _mock_keyring(monkeypatch)
+    _mock_index_path(monkeypatch, tmp_path)
+
+    test_key = "0x68bb18155ce073aad5ace00898f12c198597179b274b9dfaaf56bbdd4f144711"
+    record = add_key(name="fixture", private_key=test_key)
+
+    assert record["name"] == "fixture"
+    assert record["address"] == "0x3D383c0e65E9d0eef397aa7CBE3Ab8bdc1F9C10F"
+    assert storage[("crynux-mcp", "key:fixture")] == test_key

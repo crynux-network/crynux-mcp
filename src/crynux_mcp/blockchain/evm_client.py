@@ -77,21 +77,12 @@ class EvmClient:
         self.chain = chain
         self.w3 = Web3(HTTPProvider(chain.rpc_url))
 
-    def get_balance(self, address: str, unit: str | None = None) -> BalanceResult:
+    def get_balance(self, address: str) -> BalanceResult:
         checksum = self._validate_address(address)
-        normalized_unit = normalize_unit(unit)
         balance_wei = self.w3.eth.get_balance(checksum)
-        if normalized_unit == "wei":
-            balance_formatted = str(balance_wei)
-        else:
-            balance_formatted = str(Web3.from_wei(balance_wei, "ether"))
         return BalanceResult(
-            network=self.chain.network_key,
-            address=checksum,
             balance_wei=str(balance_wei),
-            balance_formatted=balance_formatted,
             symbol=self.chain.native_currency.symbol,
-            chain_id=self.chain.chain_id,
         )
 
     def transfer_native(
@@ -133,27 +124,22 @@ class EvmClient:
         tx_hash = tx_hash_bytes.hex()
 
         return TransferResult(
-            network=self.chain.network_key,
             from_address=from_address,
             to=to_checksum,
             value_wei=str(value_wei),
             tx_hash=tx_hash,
-            chain_id=self.chain.chain_id,
         )
 
     def get_beneficial_address(self, node_address: str) -> BeneficialAddressResult:
         node_checksum = self._validate_address(node_address)
-        contract_address, contract = self._get_beneficial_contract()
+        _, contract = self._get_beneficial_contract()
         beneficial_address = contract.functions.getBenefitAddress(node_checksum).call()
         beneficial_checksum = self._validate_address(str(beneficial_address))
         is_set = beneficial_checksum.lower() != ZERO_ADDRESS.lower()
         return BeneficialAddressResult(
-            network=self.chain.network_key,
-            node_address=node_checksum,
+            address=node_checksum,
             beneficial_address=beneficial_checksum,
             is_set=is_set,
-            contract_address=contract_address,
-            chain_id=self.chain.chain_id,
         )
 
     def set_beneficial_address(
@@ -165,7 +151,7 @@ class EvmClient:
     ) -> SetBeneficialAddressResult:
         account = self._validate_private_key(private_key)
         beneficial_checksum = self._validate_address(beneficial_address)
-        contract_address, contract = self._get_beneficial_contract()
+        _, contract = self._get_beneficial_contract()
 
         provider_chain_id = int(self.w3.eth.chain_id)
         if provider_chain_id != self.chain.chain_id:
@@ -188,17 +174,14 @@ class EvmClient:
         signed = account.sign_transaction(tx)
         tx_hash = self.w3.eth.send_raw_transaction(signed.raw_transaction).hex()
         return SetBeneficialAddressResult(
-            network=self.chain.network_key,
-            node_address=account.address,
+            address=account.address,
             beneficial_address=beneficial_checksum,
             tx_hash=tx_hash,
-            contract_address=contract_address,
-            chain_id=self.chain.chain_id,
         )
 
     def get_node_staking_info(self, node_address: str) -> NodeStakingInfoResult:
         node_checksum = self._validate_address(node_address)
-        contract_address, contract = self._get_contract(
+        _, contract = self._get_contract(
             contract_key="node_staking",
             abi=NODE_STAKING_ABI,
         )
@@ -211,28 +194,22 @@ class EvmClient:
         status = int(getattr(staking_info, "status", None) or staking_info[3] or 0)
         unstake_timestamp = int(getattr(staking_info, "unstakeTimestamp", None) or staking_info[4] or 0)
         return NodeStakingInfoResult(
-            network=self.chain.network_key,
-            node_address=staking_node_address,
+            address=staking_node_address,
             staked_balance_wei=str(staked_balance_wei),
             staked_balance_formatted=str(Web3.from_wei(staked_balance_wei, "ether")),
             staked_credits=str(staked_credits),
             status=status,
             unstake_timestamp=str(unstake_timestamp),
-            contract_address=contract_address,
-            chain_id=self.chain.chain_id,
         )
 
     def get_node_credits(self, node_address: str) -> NodeCreditsResult:
         account_address = self._validate_address(node_address)
-        contract_address, contract = self._get_contract(contract_key="credits", abi=CREDITS_ABI)
+        _, contract = self._get_contract(contract_key="credits", abi=CREDITS_ABI)
         credits = int(contract.functions.getCredits(account_address).call())
         return NodeCreditsResult(
-            network=self.chain.network_key,
-            node_address=account_address,
+            address=account_address,
             credits=str(credits),
             credits_formatted=str(Web3.from_wei(credits, "ether")),
-            contract_address=contract_address,
-            chain_id=self.chain.chain_id,
         )
 
     def get_transaction_receipt(self, tx_hash: str) -> dict[str, Any]:

@@ -4,6 +4,8 @@ import json
 from typing import Any
 from urllib import error, parse, request
 
+from crynux_mcp.relay.models import RelayDepositListResult, RelayWithdrawCreateResult, RelayWithdrawListResult
+
 
 class RelayApiClient:
     def __init__(self, *, base_url: str, timeout_seconds: int) -> None:
@@ -38,8 +40,8 @@ class RelayApiClient:
         timestamp: int,
         signature: str,
         token: str,
-    ) -> dict[str, Any]:
-        return self._request_json(
+    ) -> RelayWithdrawCreateResult:
+        payload = self._request_json(
             method="POST",
             path=f"/v1/client/{address}/withdraw",
             token=token,
@@ -51,21 +53,51 @@ class RelayApiClient:
                 "signature": signature,
             },
         )
+        if not isinstance(payload, dict):
+            raise ValueError("RELAY_INVALID_RESPONSE: relay withdraw create response must be an object.")
+        return RelayWithdrawCreateResult.create(
+            amount_wei=amount,
+            benefit_address=benefit_address,
+            timestamp=timestamp,
+            result=payload,
+        )
 
-    def list_withdraws(self, *, address: str, page: int, page_size: int, token: str) -> dict[str, Any]:
-        return self._request_json(
+    def list_withdraws(self, *, address: str, page: int, page_size: int, token: str) -> RelayWithdrawListResult:
+        payload = self._request_json(
             method="GET",
             path=f"/v1/client/{address}/withdraw/list",
             token=token,
             params={"page": page, "page_size": page_size},
         )
+        if not isinstance(payload, dict):
+            raise ValueError("RELAY_INVALID_RESPONSE: relay withdraw list response must be an object.")
+        records = payload.get("withdraw_records", [])
+        if not isinstance(records, list):
+            records = []
+        return RelayWithdrawListResult.create(
+            page=page,
+            page_size=page_size,
+            total=int(payload.get("total", 0) or 0),
+            withdraw_records=[item for item in records if isinstance(item, dict)],
+        )
 
-    def list_deposits(self, *, address: str, page: int, page_size: int, token: str) -> dict[str, Any]:
-        return self._request_json(
+    def list_deposits(self, *, address: str, page: int, page_size: int, token: str) -> RelayDepositListResult:
+        payload = self._request_json(
             method="GET",
             path=f"/v1/client/{address}/deposit/list",
             token=token,
             params={"page": page, "page_size": page_size},
+        )
+        if not isinstance(payload, dict):
+            raise ValueError("RELAY_INVALID_RESPONSE: relay deposit list response must be an object.")
+        records = payload.get("deposit_records", [])
+        if not isinstance(records, list):
+            records = []
+        return RelayDepositListResult.create(
+            page=page,
+            page_size=page_size,
+            total=int(payload.get("total", 0) or 0),
+            deposit_records=[item for item in records if isinstance(item, dict)],
         )
 
     def _request_json(

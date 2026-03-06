@@ -10,65 +10,47 @@ Unit = Literal["wei", "ether"]
 
 @dataclass(frozen=True)
 class BalanceResult:
-    network: str
-    address: str
     balance_wei: str
-    balance_formatted: str
     symbol: str
-    chain_id: int
 
 
 @dataclass(frozen=True)
 class TransferResult:
-    network: str
     from_address: str
     to: str
     value_wei: str
     tx_hash: str
-    chain_id: int
 
 
 @dataclass(frozen=True)
 class BeneficialAddressResult:
-    network: str
-    node_address: str
+    address: str
     beneficial_address: str
     is_set: bool
-    contract_address: str
-    chain_id: int
 
 
 @dataclass(frozen=True)
 class SetBeneficialAddressResult:
-    network: str
-    node_address: str
+    address: str
     beneficial_address: str
     tx_hash: str
-    contract_address: str
-    chain_id: int
 
 
 @dataclass(frozen=True)
 class NodeStakingInfoResult:
-    network: str
-    node_address: str
+    address: str
     staked_balance_wei: str
     staked_balance_formatted: str
     staked_credits: str
     status: int
     unstake_timestamp: str
-    contract_address: str
-    chain_id: int
 
 
 @dataclass(frozen=True)
 class NodeCreditsResult:
-    network: str
-    node_address: str
+    address: str
     credits: str
     credits_formatted: str
-    contract_address: str
-    chain_id: int
 
 
 def normalize_unit(unit: str | None) -> Unit:

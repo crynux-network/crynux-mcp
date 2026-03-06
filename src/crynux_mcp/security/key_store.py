@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-from getpass import getpass
 from pathlib import Path
 from typing import Any
 
@@ -61,11 +60,14 @@ def _validate_private_key(raw_key: str) -> tuple[str, str]:
     private_key = (raw_key or "").strip()
     if not private_key:
         raise ValueError("INVALID_PRIVATE_KEY: private key is required.")
+    normalized_key = private_key[2:] if private_key.lower().startswith("0x") else private_key
     try:
-        account = Account.from_key(private_key)
+        account = Account.from_key(normalized_key)
     except Exception as exc:  # noqa: BLE001
-        raise ValueError("INVALID_PRIVATE_KEY: private key is invalid.") from exc
-    return private_key, account.address
+        raise ValueError(
+            "INVALID_PRIVATE_KEY: private key is invalid. Expected a hex key with optional 0x prefix."
+        ) from exc
+    return f"0x{normalized_key}", account.address
 
 
 def _set_key(name: str, raw_key: str) -> dict[str, str]:
@@ -183,5 +185,5 @@ def has_private_key() -> bool:
 
 
 def prompt_and_add_key(name: str) -> dict[str, str]:
-    private_key = getpass("Enter signer private key (input hidden): ").strip()
+    private_key = input("Paste signer private key (optional 0x prefix): ").strip()
     return add_key(name=name, private_key=private_key)
