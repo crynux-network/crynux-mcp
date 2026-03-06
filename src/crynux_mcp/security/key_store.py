@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-from getpass import getpass
 from pathlib import Path
 from typing import Any
 
@@ -186,5 +185,5 @@ def has_private_key() -> bool:
 
 
 def prompt_and_add_key(name: str) -> dict[str, str]:
-    private_key = getpass("Enter signer private key (input hidden, optional 0x prefix): ").strip()
+    private_key = input("Paste signer private key (optional 0x prefix): ").strip()
     return add_key(name=name, private_key=private_key)
