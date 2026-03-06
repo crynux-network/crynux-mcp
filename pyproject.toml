@@ -30,7 +30,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-crynux_mcp = ["config/chains.json"]
+crynux_mcp = ["config/chains.json", "config/relay.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

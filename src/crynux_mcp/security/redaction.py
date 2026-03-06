@@ -3,7 +3,17 @@ from __future__ import annotations
 from typing import Any
 
 
-SECRET_KEYS = {"private_key", "mnemonic", "seed", "password", "secret"}
+SECRET_KEYS = {
+    "private_key",
+    "mnemonic",
+    "seed",
+    "password",
+    "secret",
+    "token",
+    "auth_token",
+    "authorization",
+    "signature",
+}
 
 
 def redact_secrets(payload: Any) -> Any:

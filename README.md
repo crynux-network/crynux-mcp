@@ -1,68 +1,30 @@
-Crynux MCP Server
+# Crynux MCP Server
 
-MCP server for Crynux Network operations.
+MCP server for Crynux Network operations, designed for LLM clients (such as Cursor, VS Code, and Claude Desktop) to perform most Crynux Network/Crynux Portal actions through standardized MCP tools.
 
-## Scope
+## Features
 
-- Native CNX balance query on Crynux EVM networks
-- Native CNX transfer signed by a private key from local system keychain
+### Wallet
+
+- Wallet management with system keychain (create keys, sign transactions, list/delete/export keys, set default key)
+
+### Blockchain
+
+- Native CNX balance query on Crynux L2 networks
+- Native CNX transfer
 - Beneficial address query and on-chain update
 - Node staking query
 - Node credits query
-- Relay API integration is not implemented yet
 
-## Spec and transport
+### Relay
 
-- MCP protocol target: `2025-11-25`
-- Runtime transport: `stdio` (local process, no HTTP server required)
+- Relay account balance query
+- Relay withdraw create/list/latest-status query
+- Relay deposit initiate/list/latest-status query
 
 ## Tools
 
-### `get_balance`
-
-Query the native CNX balance for an EVM address on a configured Crynux network.
-
-### `transfer_native`
-
-Send native CNX from the local signer wallet to a recipient EVM address.
-
-### `get_beneficial_address`
-
-Query the configured beneficial address for an operational EVM address.
-
-### `set_beneficial_address`
-
-Submit an on-chain transaction to set a beneficial address.
-
-### `get_node_staking_info`
-
-Query node staking details.
-
-### `get_node_credits`
-
-Query node credits.
-
-### `create_key`
-
-Create a new signer key in local system keychain with a provided name.
-
-### `list_keys`
-
-List all local signer keys (name, address, and default flag).
-
-### `delete_key`
-
-Delete a local signer key by name.
-
-### `set_default_key`
-
-Set a local signer key as the default key.
-
-### `export_key`
-
-Export a named local signer key to a specified file path.
-
-For detailed tool inputs/outputs, see [`docs/tools.md`](./docs/tools.md).
+For the full action list and detailed input/output fields, see [`docs/tools.md`](./docs/tools.md).
 
 ## Security notes
 
@@ -170,14 +132,8 @@ After saving MCP config, fully restart the client so it reloads servers.
 
 ### Step 6) Verify the server is loaded
 
-In your AI client, check MCP tool list and confirm these tools appear:
-
-- `get_balance`
-- `transfer_native`
-- `get_beneficial_address`
-- `set_beneficial_address`
-- `get_node_staking_info`
-- `get_node_credits`
+In your AI client, check MCP tool list and confirm wallet, blockchain, and Relay actions are available.
+Use [`docs/tools.md`](./docs/tools.md) as the source of truth for the full action catalog.
 
 ### Step 7) First tool calls
 
@@ -195,26 +151,28 @@ Example: send native CNX
 - `amount`: for example `0.1`
 - `unit`: `ether`
 
-Example: query beneficial address
+Example: query Relay account balance
 
 - `network`: `dymension`
-- `node_address`: your operational EVM address
+- `address`: your wallet EVM address
+- `key_name`: `main` (optional)
 
-Example: set beneficial address
+Relay auth token is obtained and refreshed internally for authenticated Relay actions.
 
-- `network`: `dymension`
-- `key_name`: `main` (optional, uses default local key if omitted)
-- `beneficial_address`: your payout EVM address
-
-Example: query node staking info
+Example: create Relay withdraw request
 
 - `network`: `dymension`
-- `node_address`: your node wallet EVM address
+- `address`: your wallet EVM address
+- `amount_wei`: for example `1000000000000000000` (1 CNX)
+- `benefit_address`: optional destination address
+- `key_name`: `main` (optional)
 
-Example: query node credits
+Example: initiate Relay deposit (on-chain transfer)
 
 - `network`: `dymension`
-- `node_address`: your node wallet EVM address
+- `amount`: for example `1`
+- `unit`: `ether`
+- `key_name`: `main` (optional)
 
 Signer key source for transfer:
 
@@ -229,6 +187,11 @@ You can start the MCP server process directly for debugging:
 python -m crynux_mcp
 ```
 
+## Spec and transport
+
+- MCP protocol target: `2025-11-25`
+- Runtime transport: `stdio` (local process, no HTTP server required)
+
 ## Release
 
 Maintainer release instructions are in [`RELEASE.md`](./RELEASE.md).
@@ -240,6 +203,12 @@ Chain metadata is stored in:
 - `src/crynux_mcp/config/chains.json`
 
 Update this file to change RPC URLs, chain IDs, or contract addresses.
+
+Relay API configuration is stored in:
+
+- `src/crynux_mcp/config/relay.json`
+
+Update this file to change Relay URL, timeout, and per-network deposit addresses.
 
 ## Tests
 
