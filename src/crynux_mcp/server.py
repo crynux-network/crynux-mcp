@@ -307,7 +307,6 @@ def handle_relay_withdraw_create(
 
 
 def handle_relay_withdraw_list(
-    network: str | None,
     address: str | None = None,
     page: int = 1,
     page_size: int = 10,
@@ -315,7 +314,6 @@ def handle_relay_withdraw_list(
 ) -> dict[str, Any]:
     token: str | None = None
     try:
-        _ = _resolve_network_key(network)
         resolved_address = _resolve_address(address=address, key_name=key_name)
         token_info = _get_relay_token(address=resolved_address, key_name=key_name)
         token = token_info.token
@@ -324,7 +322,7 @@ def handle_relay_withdraw_list(
     except Exception as exc:  # noqa: BLE001
         raise _execution_error(
             exc,
-            {"network": network, "address": address, "page": page, "page_size": page_size, "key_name": key_name, "token": token},
+            {"address": address, "page": page, "page_size": page_size, "key_name": key_name, "token": token},
         ) from exc
 
 
@@ -357,7 +355,6 @@ def handle_relay_withdraw_latest_status(
 
 
 def handle_relay_deposit_list(
-    network: str | None,
     address: str | None = None,
     page: int = 1,
     page_size: int = 10,
@@ -365,7 +362,6 @@ def handle_relay_deposit_list(
 ) -> dict[str, Any]:
     token: str | None = None
     try:
-        _ = _resolve_network_key(network)
         resolved_address = _resolve_address(address=address, key_name=key_name)
         token_info = _get_relay_token(address=resolved_address, key_name=key_name)
         token = token_info.token
@@ -374,7 +370,7 @@ def handle_relay_deposit_list(
     except Exception as exc:  # noqa: BLE001
         raise _execution_error(
             exc,
-            {"network": network, "address": address, "page": page, "page_size": page_size, "key_name": key_name, "token": token},
+            {"address": address, "page": page, "page_size": page_size, "key_name": key_name, "token": token},
         ) from exc
 
 
@@ -551,7 +547,6 @@ def relay_withdraw_create(
 
 @mcp.tool()
 def relay_withdraw_list(
-    network: str | None,
     address: str | None = None,
     page: int = 1,
     page_size: int = 10,
@@ -559,7 +554,6 @@ def relay_withdraw_list(
 ) -> dict[str, Any]:
     """List Relay withdraw requests for an address."""
     return handle_relay_withdraw_list(
-        network=network,
         address=address,
         page=page,
         page_size=page_size,
@@ -605,7 +599,6 @@ def relay_deposit_initiate(
 
 @mcp.tool()
 def relay_deposit_list(
-    network: str | None,
     address: str | None = None,
     page: int = 1,
     page_size: int = 10,
@@ -613,7 +606,6 @@ def relay_deposit_list(
 ) -> dict[str, Any]:
     """List Relay deposit records for an address."""
     return handle_relay_deposit_list(
-        network=network,
         address=address,
         page=page,
         page_size=page_size,

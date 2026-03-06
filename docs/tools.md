@@ -159,7 +159,6 @@ Output fields:
 ## relay_withdraw_list
 
 Inputs:
-- `network`: optional (`dymension` or `near`). Defaults to configured default network.
 - `address`: optional EVM address.
 - `page`: optional page number (default `1`).
 - `page_size`: optional page size (default `10`).
@@ -170,6 +169,7 @@ Output fields:
 - `page_size`
 - `total`
 - `withdraw_records`
+- Each record includes its own `network` field.
 
 ## relay_withdraw_latest_status
 
@@ -204,7 +204,6 @@ Output fields:
 ## relay_deposit_list
 
 Inputs:
-- `network`: optional (`dymension` or `near`). Defaults to configured default network.
 - `address`: optional EVM address.
 - `page`: optional page number (default `1`).
 - `page_size`: optional page size (default `10`).
@@ -215,6 +214,7 @@ Output fields:
 - `page_size`
 - `total`
 - `deposit_records`
+- Each record includes its own `network` field.
 
 ## relay_deposit_latest_status
 
