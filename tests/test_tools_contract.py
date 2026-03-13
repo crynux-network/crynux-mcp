@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from crynux_mcp.server import (
     handle_get_balance,
     handle_get_beneficial_address,
+    handle_get_latest_block_number,
     handle_get_node_credits,
     handle_get_node_staking_info,
     handle_set_beneficial_address,
@@ -35,6 +36,31 @@ def test_handle_get_balance_shape(monkeypatch) -> None:  # type: ignore[no-untyp
     assert payload["symbol"] == "CNX"
     assert "network" not in payload
     assert "address" not in payload
+    assert "chain_id" not in payload
+
+
+def test_handle_get_latest_block_number_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    @dataclass(frozen=True)
+    class FakeResult:
+        block_number: int = 123456
+
+    class FakeClient:
+        def __init__(self, _chain) -> None:
+            pass
+
+        def get_latest_block_number(self):
+            return FakeResult()
+
+    class FakeRegistry:
+        def resolve(self, _network):
+            return object()
+
+    monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
+    monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
+
+    payload = handle_get_latest_block_number(network="dymension")
+    assert payload["block_number"] == 123456
+    assert "network" not in payload
     assert "chain_id" not in payload
 
 

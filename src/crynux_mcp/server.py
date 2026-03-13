@@ -88,6 +88,15 @@ def handle_get_balance(
         raise _execution_error(exc, {"network": network, "address": address, "key_name": key_name}) from exc
 
 
+def handle_get_latest_block_number(network: str | None) -> dict[str, Any]:
+    try:
+        chain = registry.resolve(network)
+        client = EvmClient(chain)
+        return _to_response_payload(client.get_latest_block_number())
+    except Exception as exc:  # noqa: BLE001
+        raise _execution_error(exc, {"network": network}) from exc
+
+
 def handle_transfer_native(
     network: str | None,
     to: str,
@@ -548,6 +557,12 @@ def get_balance(
 ) -> dict[str, Any]:
     """Get native CNX balance on a selected Crynux EVM network."""
     return handle_get_balance(network=network, address=address, key_name=key_name)
+
+
+@mcp.tool()
+def get_latest_block_number(network: str | None) -> dict[str, Any]:
+    """Get latest block number on a selected Crynux EVM network."""
+    return handle_get_latest_block_number(network=network)
 
 
 @mcp.tool()

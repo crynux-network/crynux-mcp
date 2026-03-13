@@ -10,6 +10,7 @@ from web3.exceptions import TransactionNotFound
 from crynux_mcp.blockchain.schemas import (
     BalanceResult,
     BeneficialAddressResult,
+    LatestBlockNumberResult,
     NodeCreditsResult,
     NodeStakingInfoResult,
     SetBeneficialAddressResult,
@@ -84,6 +85,9 @@ class EvmClient:
             balance_wei=str(balance_wei),
             symbol=self.chain.native_currency.symbol,
         )
+
+    def get_latest_block_number(self) -> LatestBlockNumberResult:
+        return LatestBlockNumberResult(block_number=int(self.w3.eth.block_number))
 
     def transfer_native(
         self,

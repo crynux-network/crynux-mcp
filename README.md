@@ -1,5 +1,8 @@
 # Crynux MCP Server
 
+[![](https://dcbadge.limes.pink/api/server/https://discord.gg/zmU9GRwU6f)](https://discord.gg/zmU9GRwU6f)
+[![PyPI - Version](https://img.shields.io/pypi/v/crynux-mcp?style=for-the-badge)](https://pypi.org/project/crynux-mcp/)
+
 MCP server for Crynux Network operations, designed for LLM clients (such as Cursor, VS Code, and Claude Desktop) to perform most Crynux Network/Crynux Portal actions through standardized MCP tools.
 
 ## Features
@@ -11,6 +14,7 @@ MCP server for Crynux Network operations, designed for LLM clients (such as Curs
 ### Blockchain
 
 - Native CNX balance query on Crynux L2 networks
+- Latest block height query on Crynux L2 networks
 - Native CNX transfer
 - Beneficial address query and on-chain update
 - Node staking query

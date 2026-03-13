@@ -19,6 +19,7 @@ This document contains detailed input and output fields for each MCP tool.
 | Action | Description |
 |---|---|
 | [`get_balance`](#get_balance) | Query native CNX balance for an address. |
+| [`get_latest_block_number`](#get_latest_block_number) | Query latest on-chain block height for a network. |
 | [`transfer_native`](#transfer_native) | Send native CNX with local signer key. |
 | [`get_beneficial_address`](#get_beneficial_address) | Query node beneficial address. |
 | [`set_beneficial_address`](#set_beneficial_address) | Submit transaction to set beneficial address. |
@@ -55,6 +56,14 @@ Inputs:
 Output fields:
 - `balance_wei`
 - `symbol` (`CNX`)
+
+## get_latest_block_number
+
+Inputs:
+- `network`: optional (`dymension` or `near`). Defaults to configured default network.
+
+Output fields:
+- `block_number`: latest finalized block number returned by RPC.
 
 ## transfer_native
 

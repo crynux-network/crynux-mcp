@@ -15,6 +15,11 @@ class BalanceResult:
 
 
 @dataclass(frozen=True)
+class LatestBlockNumberResult:
+    block_number: int
+
+
+@dataclass(frozen=True)
 class TransferResult:
     from_address: str
     to: str
