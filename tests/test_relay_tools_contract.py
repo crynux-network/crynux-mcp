@@ -20,7 +20,7 @@ def test_handle_relay_get_auth_token_shape(monkeypatch) -> None:  # type: ignore
     monkeypatch.setattr("crynux_mcp.server._resolve_network_key", lambda network: "dymension")
     monkeypatch.setattr(
         "crynux_mcp.server._get_relay_token",
-        lambda address, key_name=None, force_refresh=False: RelayAuthTokenResult(
+        lambda address, key_name=None, force_refresh=False, **_kwargs: RelayAuthTokenResult(
             token="jwt-abc",
             expires_at=1234567890,
             refreshed=bool(force_refresh),
@@ -40,7 +40,7 @@ def test_handle_relay_get_auth_token_shape(monkeypatch) -> None:  # type: ignore
 def test_handle_relay_get_account_balance_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(
         "crynux_mcp.server._get_relay_token",
-        lambda address, key_name=None, force_refresh=False: RelayAuthTokenResult(
+        lambda address, key_name=None, force_refresh=False, **_kwargs: RelayAuthTokenResult(
             token="jwt-abc",
             expires_at=1234567890,
             refreshed=bool(force_refresh),
@@ -65,7 +65,7 @@ def test_handle_relay_get_account_balance_accepts_key_name(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "crynux_mcp.server._get_relay_token",
-        lambda address, key_name=None, force_refresh=False: RelayAuthTokenResult(
+        lambda address, key_name=None, force_refresh=False, **_kwargs: RelayAuthTokenResult(
             token="jwt-abc",
             expires_at=1234567890,
             refreshed=bool(force_refresh),
@@ -81,11 +81,49 @@ def test_handle_relay_get_account_balance_accepts_key_name(monkeypatch) -> None:
     assert "address" not in payload
 
 
+def test_handle_relay_get_account_balance_uses_custom_relay_base_url(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    captured: dict[str, object] = {}
+
+    class FakeRelayApi:
+        def get_account_balance(self, *, address: str, token: str) -> str:
+            captured["balance_address"] = address
+            captured["balance_token"] = token
+            return "42"
+
+    class FakeRelayAuth:
+        pass
+
+    def fake_resolve_relay_context(relay_base_url: str | None = None):
+        captured["relay_base_url"] = relay_base_url
+        return FakeRelayApi(), FakeRelayAuth()
+
+    def fake_get_relay_token(*, address: str, key_name=None, force_refresh=False, relay_api=None, relay_auth_manager=None):
+        captured["token_address"] = address
+        captured["token_key_name"] = key_name
+        captured["token_force_refresh"] = force_refresh
+        captured["token_relay_api"] = relay_api is not None
+        captured["token_relay_auth"] = relay_auth_manager is not None
+        return RelayAuthTokenResult(token="jwt-custom", expires_at=1234567890, refreshed=False)
+
+    monkeypatch.setattr("crynux_mcp.server._resolve_relay_context", fake_resolve_relay_context)
+    monkeypatch.setattr("crynux_mcp.server._get_relay_token", fake_get_relay_token)
+
+    payload = handle_relay_get_account_balance(
+        address="0x1111111111111111111111111111111111111111",
+        relay_base_url="https://relay.custom.test",
+    )
+    assert payload["balance_wei"] == "42"
+    assert captured["relay_base_url"] == "https://relay.custom.test"
+    assert captured["token_relay_api"] is True
+    assert captured["token_relay_auth"] is True
+    assert captured["balance_token"] == "jwt-custom"
+
+
 def test_handle_relay_withdraw_latest_status_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr("crynux_mcp.server._resolve_network_key", lambda network: "dymension")
     monkeypatch.setattr(
         "crynux_mcp.server._get_relay_token",
-        lambda address, key_name=None, force_refresh=False: RelayAuthTokenResult(
+        lambda address, key_name=None, force_refresh=False, **_kwargs: RelayAuthTokenResult(
             token="jwt-abc",
             expires_at=1234567890,
             refreshed=bool(force_refresh),
@@ -139,7 +177,7 @@ def test_handle_relay_withdraw_create_uses_beneficial_address_when_set(monkeypat
     monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
     monkeypatch.setattr(
         "crynux_mcp.server._get_relay_token",
-        lambda address, key_name=None, force_refresh=False: RelayAuthTokenResult(
+        lambda address, key_name=None, force_refresh=False, **_kwargs: RelayAuthTokenResult(
             token="jwt-abc",
             expires_at=1234567890,
             refreshed=bool(force_refresh),
@@ -209,7 +247,7 @@ def test_handle_relay_withdraw_create_falls_back_to_address_when_beneficial_not_
     monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
     monkeypatch.setattr(
         "crynux_mcp.server._get_relay_token",
-        lambda address, key_name=None, force_refresh=False: RelayAuthTokenResult(
+        lambda address, key_name=None, force_refresh=False, **_kwargs: RelayAuthTokenResult(
             token="jwt-abc",
             expires_at=1234567890,
             refreshed=bool(force_refresh),
@@ -260,7 +298,7 @@ def test_handle_relay_deposit_latest_status_empty(monkeypatch) -> None:  # type:
     monkeypatch.setattr("crynux_mcp.server._resolve_network_key", lambda network: "dymension")
     monkeypatch.setattr(
         "crynux_mcp.server._get_relay_token",
-        lambda address, key_name=None, force_refresh=False: RelayAuthTokenResult(
+        lambda address, key_name=None, force_refresh=False, **_kwargs: RelayAuthTokenResult(
             token="jwt-abc",
             expires_at=1234567890,
             refreshed=bool(force_refresh),
@@ -319,3 +357,40 @@ def test_handle_relay_deposit_initiate_shape(monkeypatch) -> None:  # type: igno
     assert payload["to"] == "0x2003D1F047C1948cfE12e449379e3ce487070765"
     assert payload["tx_hash"] == "0xabc"
     assert "deposit_address" not in payload
+
+
+def test_handle_relay_deposit_initiate_accepts_relay_base_url(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    class FakeChain:
+        network_key = "dymension"
+
+    @dataclass(frozen=True)
+    class FakeTransferResult:
+        from_address: str = "0x1111111111111111111111111111111111111111"
+        to: str = "0x2003D1F047C1948cfE12e449379e3ce487070765"
+        value_wei: str = "100"
+        tx_hash: str = "0xabc"
+
+    class FakeClient:
+        def __init__(self, _chain) -> None:
+            pass
+
+        def transfer_native(self, **_kwargs):
+            return FakeTransferResult()
+
+    class FakeRelayConfig:
+        def get_deposit_address(self, network: str) -> str:
+            _ = network
+            return "0x2003D1F047C1948cfE12e449379e3ce487070765"
+
+    monkeypatch.setattr("crynux_mcp.server.registry.resolve", lambda network: FakeChain())
+    monkeypatch.setattr("crynux_mcp.server.get_private_key", lambda name=None: "0xabc")
+    monkeypatch.setattr("crynux_mcp.server.relay_config", FakeRelayConfig())
+    monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
+
+    payload = handle_relay_deposit_initiate(
+        network="dymension",
+        amount="1",
+        relay_base_url="https://relay.custom.test",
+    )
+    assert payload["to"] == "0x2003D1F047C1948cfE12e449379e3ce487070765"
+    assert payload["tx_hash"] == "0xabc"

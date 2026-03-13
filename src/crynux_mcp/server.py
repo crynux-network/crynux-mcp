@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any
 
@@ -31,6 +32,8 @@ registry = load_chain_registry()
 relay_config = load_relay_config()
 relay_client = RelayApiClient(base_url=relay_config.base_url, timeout_seconds=relay_config.timeout_seconds)
 relay_auth = RelayAuthManager(auth_safety_margin_seconds=relay_config.auth_safety_margin_seconds)
+_relay_clients: dict[str, RelayApiClient] = {}
+_relay_auth_managers: dict[str, RelayAuthManager] = {}
 
 
 def _to_response_payload(value: Any) -> dict[str, Any]:
@@ -217,11 +220,44 @@ def _resolve_relay_withdraw_destination(
     return chain.network_key, resolved_address, destination
 
 
-def _get_relay_token(address: str, key_name: str | None = None, force_refresh: bool = False) -> RelayAuthTokenResult:
-    session = relay_auth.get_valid_session(
+def _relay_token_service_name(base_url: str) -> str:
+    digest = hashlib.sha256(base_url.encode("utf-8")).hexdigest()[:16]
+    return f"crynux-mcp-relay:{digest}"
+
+
+def _resolve_relay_context(relay_base_url: str | None = None) -> tuple[RelayApiClient, RelayAuthManager]:
+    normalized = (relay_base_url or "").strip().rstrip("/")
+    if not normalized or normalized == relay_config.base_url:
+        return relay_client, relay_auth
+
+    cached_client = _relay_clients.get(normalized)
+    cached_auth = _relay_auth_managers.get(normalized)
+    if cached_client is not None and cached_auth is not None:
+        return cached_client, cached_auth
+
+    client = RelayApiClient(base_url=normalized, timeout_seconds=relay_config.timeout_seconds)
+    auth_manager = RelayAuthManager(
+        auth_safety_margin_seconds=relay_config.auth_safety_margin_seconds,
+        token_service_name=_relay_token_service_name(normalized),
+    )
+    _relay_clients[normalized] = client
+    _relay_auth_managers[normalized] = auth_manager
+    return client, auth_manager
+
+
+def _get_relay_token(
+    address: str,
+    key_name: str | None = None,
+    force_refresh: bool = False,
+    relay_api: RelayApiClient | None = None,
+    relay_auth_manager: RelayAuthManager | None = None,
+) -> RelayAuthTokenResult:
+    api = relay_api or relay_client
+    auth_manager = relay_auth_manager or relay_auth
+    session = auth_manager.get_valid_session(
         address=address,
         key_name=key_name,
-        api=relay_client,
+        api=api,
         force_refresh=force_refresh,
     )
     return RelayAuthTokenResult.from_session(session, refreshed=bool(force_refresh))
@@ -248,16 +284,26 @@ def handle_relay_get_auth_token(
 def handle_relay_get_account_balance(
     address: str | None = None,
     key_name: str | None = None,
+    relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     token: str | None = None
     try:
+        relay_api, relay_auth_manager = _resolve_relay_context(relay_base_url)
         resolved_address = _resolve_address(address=address, key_name=key_name)
-        token_info = _get_relay_token(address=resolved_address, key_name=key_name)
+        token_info = _get_relay_token(
+            address=resolved_address,
+            key_name=key_name,
+            relay_api=relay_api,
+            relay_auth_manager=relay_auth_manager,
+        )
         token = token_info.token
-        balance_wei = relay_client.get_account_balance(address=resolved_address, token=token)
+        balance_wei = relay_api.get_account_balance(address=resolved_address, token=token)
         return _to_response_payload(RelayAccountBalanceResult.create(balance_wei=balance_wei))
     except Exception as exc:  # noqa: BLE001
-        raise _execution_error(exc, {"address": address, "key_name": key_name, "token": token}) from exc
+        raise _execution_error(
+            exc,
+            {"address": address, "key_name": key_name, "relay_base_url": relay_base_url, "token": token},
+        ) from exc
 
 
 def handle_relay_withdraw_create(
@@ -265,16 +311,23 @@ def handle_relay_withdraw_create(
     amount_wei: str,
     address: str | None = None,
     key_name: str | None = None,
+    relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     token: str | None = None
     signature: str | None = None
     try:
+        relay_api, relay_auth_manager = _resolve_relay_context(relay_base_url)
         network_key, resolved_address, destination = _resolve_relay_withdraw_destination(
             network=network,
             address=address,
             key_name=key_name,
         )
-        token_info = _get_relay_token(address=resolved_address, key_name=key_name)
+        token_info = _get_relay_token(
+            address=resolved_address,
+            key_name=key_name,
+            relay_api=relay_api,
+            relay_auth_manager=relay_auth_manager,
+        )
         token = token_info.token
         action = f"Withdraw {amount_wei} from {resolved_address} to {destination} on {network_key}"
         timestamp, signature = relay_auth.sign_action(
@@ -282,7 +335,7 @@ def handle_relay_withdraw_create(
             action=action,
             key_name=key_name,
         )
-        result = relay_client.create_withdraw(
+        result = relay_api.create_withdraw(
             address=resolved_address,
             amount=amount_wei,
             benefit_address=destination,
@@ -300,6 +353,7 @@ def handle_relay_withdraw_create(
                 "address": address,
                 "amount_wei": amount_wei,
                 "key_name": key_name,
+                "relay_base_url": relay_base_url,
                 "token": token,
                 "signature": signature,
             },
@@ -311,18 +365,32 @@ def handle_relay_withdraw_list(
     page: int = 1,
     page_size: int = 10,
     key_name: str | None = None,
+    relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     token: str | None = None
     try:
+        relay_api, relay_auth_manager = _resolve_relay_context(relay_base_url)
         resolved_address = _resolve_address(address=address, key_name=key_name)
-        token_info = _get_relay_token(address=resolved_address, key_name=key_name)
+        token_info = _get_relay_token(
+            address=resolved_address,
+            key_name=key_name,
+            relay_api=relay_api,
+            relay_auth_manager=relay_auth_manager,
+        )
         token = token_info.token
-        result = relay_client.list_withdraws(address=resolved_address, page=page, page_size=page_size, token=token)
+        result = relay_api.list_withdraws(address=resolved_address, page=page, page_size=page_size, token=token)
         return _to_response_payload(result)
     except Exception as exc:  # noqa: BLE001
         raise _execution_error(
             exc,
-            {"address": address, "page": page, "page_size": page_size, "key_name": key_name, "token": token},
+            {
+                "address": address,
+                "page": page,
+                "page_size": page_size,
+                "key_name": key_name,
+                "relay_base_url": relay_base_url,
+                "token": token,
+            },
         ) from exc
 
 
@@ -331,14 +399,21 @@ def handle_relay_withdraw_latest_status(
     address: str | None = None,
     scan_page_size: int = 20,
     key_name: str | None = None,
+    relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     token: str | None = None
     try:
+        relay_api, relay_auth_manager = _resolve_relay_context(relay_base_url)
         _ = _resolve_network_key(network)
         resolved_address = _resolve_address(address=address, key_name=key_name)
-        token_info = _get_relay_token(address=resolved_address, key_name=key_name)
+        token_info = _get_relay_token(
+            address=resolved_address,
+            key_name=key_name,
+            relay_api=relay_api,
+            relay_auth_manager=relay_auth_manager,
+        )
         token = token_info.token
-        result = relay_client.list_withdraws(address=resolved_address, page=1, page_size=scan_page_size, token=token)
+        result = relay_api.list_withdraws(address=resolved_address, page=1, page_size=scan_page_size, token=token)
         records = result.withdraw_records
         return _to_response_payload(RelayLatestStatusResult.from_records(kind="withdraw", records=records))
     except Exception as exc:  # noqa: BLE001
@@ -349,6 +424,7 @@ def handle_relay_withdraw_latest_status(
                 "address": address,
                 "scan_page_size": scan_page_size,
                 "key_name": key_name,
+                "relay_base_url": relay_base_url,
                 "token": token,
             },
         ) from exc
@@ -359,18 +435,32 @@ def handle_relay_deposit_list(
     page: int = 1,
     page_size: int = 10,
     key_name: str | None = None,
+    relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     token: str | None = None
     try:
+        relay_api, relay_auth_manager = _resolve_relay_context(relay_base_url)
         resolved_address = _resolve_address(address=address, key_name=key_name)
-        token_info = _get_relay_token(address=resolved_address, key_name=key_name)
+        token_info = _get_relay_token(
+            address=resolved_address,
+            key_name=key_name,
+            relay_api=relay_api,
+            relay_auth_manager=relay_auth_manager,
+        )
         token = token_info.token
-        result = relay_client.list_deposits(address=resolved_address, page=page, page_size=page_size, token=token)
+        result = relay_api.list_deposits(address=resolved_address, page=page, page_size=page_size, token=token)
         return _to_response_payload(result)
     except Exception as exc:  # noqa: BLE001
         raise _execution_error(
             exc,
-            {"address": address, "page": page, "page_size": page_size, "key_name": key_name, "token": token},
+            {
+                "address": address,
+                "page": page,
+                "page_size": page_size,
+                "key_name": key_name,
+                "relay_base_url": relay_base_url,
+                "token": token,
+            },
         ) from exc
 
 
@@ -379,14 +469,21 @@ def handle_relay_deposit_latest_status(
     address: str | None = None,
     scan_page_size: int = 20,
     key_name: str | None = None,
+    relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     token: str | None = None
     try:
+        relay_api, relay_auth_manager = _resolve_relay_context(relay_base_url)
         _ = _resolve_network_key(network)
         resolved_address = _resolve_address(address=address, key_name=key_name)
-        token_info = _get_relay_token(address=resolved_address, key_name=key_name)
+        token_info = _get_relay_token(
+            address=resolved_address,
+            key_name=key_name,
+            relay_api=relay_api,
+            relay_auth_manager=relay_auth_manager,
+        )
         token = token_info.token
-        result = relay_client.list_deposits(address=resolved_address, page=1, page_size=scan_page_size, token=token)
+        result = relay_api.list_deposits(address=resolved_address, page=1, page_size=scan_page_size, token=token)
         records = result.deposit_records
         return _to_response_payload(RelayLatestStatusResult.from_records(kind="deposit", records=records))
     except Exception as exc:  # noqa: BLE001
@@ -397,6 +494,7 @@ def handle_relay_deposit_latest_status(
                 "address": address,
                 "scan_page_size": scan_page_size,
                 "key_name": key_name,
+                "relay_base_url": relay_base_url,
                 "token": token,
             },
         ) from exc
@@ -409,6 +507,7 @@ def handle_relay_deposit_initiate(
     unit: str | None = "ether",
     gas_price_wei: int | None = None,
     gas_limit: int | None = None,
+    relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     private_key: str | None = None
     try:
@@ -433,6 +532,7 @@ def handle_relay_deposit_initiate(
                 "amount": amount,
                 "key_name": key_name,
                 "private_key": private_key,
+                "relay_base_url": relay_base_url,
                 "unit": unit,
                 "gas_price_wei": gas_price_wei,
                 "gas_limit": gas_limit,
@@ -524,9 +624,10 @@ def get_node_credits(
 def relay_get_account_balance(
     address: str | None = None,
     key_name: str | None = None,
+    relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     """Get Relay account balance in wei for an EVM address."""
-    return handle_relay_get_account_balance(address=address, key_name=key_name)
+    return handle_relay_get_account_balance(address=address, key_name=key_name, relay_base_url=relay_base_url)
 
 
 @mcp.tool()
@@ -535,6 +636,7 @@ def relay_withdraw_create(
     amount_wei: str,
     address: str | None = None,
     key_name: str | None = None,
+    relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     """Create a Relay withdraw request signed by the local key."""
     return handle_relay_withdraw_create(
@@ -542,6 +644,7 @@ def relay_withdraw_create(
         address=address,
         amount_wei=amount_wei,
         key_name=key_name,
+        relay_base_url=relay_base_url,
     )
 
 
@@ -551,6 +654,7 @@ def relay_withdraw_list(
     page: int = 1,
     page_size: int = 10,
     key_name: str | None = None,
+    relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     """List Relay withdraw requests for an address."""
     return handle_relay_withdraw_list(
@@ -558,6 +662,7 @@ def relay_withdraw_list(
         page=page,
         page_size=page_size,
         key_name=key_name,
+        relay_base_url=relay_base_url,
     )
 
 
@@ -567,6 +672,7 @@ def relay_withdraw_latest_status(
     address: str | None = None,
     scan_page_size: int = 20,
     key_name: str | None = None,
+    relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     """Get latest status from Relay withdraw records (0=Processing, 1=Success, 2=Failed)."""
     return handle_relay_withdraw_latest_status(
@@ -574,6 +680,7 @@ def relay_withdraw_latest_status(
         address=address,
         scan_page_size=scan_page_size,
         key_name=key_name,
+        relay_base_url=relay_base_url,
     )
 
 
@@ -585,6 +692,7 @@ def relay_deposit_initiate(
     unit: str | None = "ether",
     gas_price_wei: int | None = None,
     gas_limit: int | None = None,
+    relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     """Initiate Relay deposit by sending on-chain CNX to Relay deposit address."""
     return handle_relay_deposit_initiate(
@@ -594,6 +702,7 @@ def relay_deposit_initiate(
         unit=unit,
         gas_price_wei=gas_price_wei,
         gas_limit=gas_limit,
+        relay_base_url=relay_base_url,
     )
 
 
@@ -603,6 +712,7 @@ def relay_deposit_list(
     page: int = 1,
     page_size: int = 10,
     key_name: str | None = None,
+    relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     """List Relay deposit records for an address."""
     return handle_relay_deposit_list(
@@ -610,6 +720,7 @@ def relay_deposit_list(
         page=page,
         page_size=page_size,
         key_name=key_name,
+        relay_base_url=relay_base_url,
     )
 
 
@@ -619,6 +730,7 @@ def relay_deposit_latest_status(
     address: str | None = None,
     scan_page_size: int = 20,
     key_name: str | None = None,
+    relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     """Get latest status from Relay deposit records (0=Processing, 1=Success, 2=Failed)."""
     return handle_relay_deposit_latest_status(
@@ -626,6 +738,7 @@ def relay_deposit_latest_status(
         address=address,
         scan_page_size=scan_page_size,
         key_name=key_name,
+        relay_base_url=relay_base_url,
     )
 
 

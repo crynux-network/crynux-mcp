@@ -31,10 +31,12 @@ class RelayAuthManager:
         self,
         *,
         auth_safety_margin_seconds: int = 30,
+        token_service_name: str = TOKEN_SERVICE_NAME,
         get_private_key_fn: Callable[[str | None], str] = get_local_private_key,
         now_fn: Callable[[], int] = lambda: int(time.time()),  # noqa: E731
     ) -> None:
         self._auth_safety_margin_seconds = max(0, int(auth_safety_margin_seconds))
+        self._token_service_name = str(token_service_name or "").strip() or TOKEN_SERVICE_NAME
         self._get_private_key = get_private_key_fn
         self._now = now_fn
         self._memory_sessions: dict[str, RelayAuthSession] = {}
@@ -102,7 +104,7 @@ class RelayAuthManager:
         return f"token:{address}"
 
     def _load_from_keychain(self, address: str) -> RelayAuthSession | None:
-        raw = (keyring.get_password(TOKEN_SERVICE_NAME, self._token_account_name(address)) or "").strip()
+        raw = (keyring.get_password(self._token_service_name, self._token_account_name(address)) or "").strip()
         if not raw:
             return None
         try:
@@ -122,7 +124,7 @@ class RelayAuthManager:
         # Keychain write failure should not block API calls.
         try:
             keyring.set_password(
-                TOKEN_SERVICE_NAME,
+                self._token_service_name,
                 self._token_account_name(session.address),
                 json.dumps(asdict(session), ensure_ascii=True),
             )

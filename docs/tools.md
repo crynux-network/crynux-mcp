@@ -133,6 +133,7 @@ Output fields:
 Inputs:
 - `address`: optional EVM address.
 - `key_name`: optional signer key name. Uses key address when provided.
+- `relay_base_url`: optional Relay API base URL override for this call.
 
 Output fields:
 - `balance_wei`
@@ -144,6 +145,7 @@ Inputs:
 - `address`: optional node wallet EVM address.
 - `amount_wei`: amount in wei as a numeric string.
 - `key_name`: optional signer key name. Uses key address when provided.
+- `relay_base_url`: optional Relay API base URL override for this call.
 
 Behavior:
 - The tool queries the on-chain beneficial address for the resolved node wallet before creating the Relay withdraw.
@@ -163,6 +165,7 @@ Inputs:
 - `page`: optional page number (default `1`).
 - `page_size`: optional page size (default `10`).
 - `key_name`: optional signer key name. Uses key address when provided.
+- `relay_base_url`: optional Relay API base URL override for this call.
 
 Output fields:
 - `page`
@@ -178,6 +181,7 @@ Inputs:
 - `address`: optional EVM address.
 - `scan_page_size`: optional scan size from latest list page (default `20`).
 - `key_name`: optional signer key name. Uses key address when provided.
+- `relay_base_url`: optional Relay API base URL override for this call.
 
 Output fields:
 - `kind`: `withdraw`
@@ -194,6 +198,7 @@ Inputs:
 - `unit`: optional, `wei` or `ether` (default: `ether`).
 - `gas_price_wei`: optional override.
 - `gas_limit`: optional override.
+- `relay_base_url`: optional Relay API base URL override for this call.
 
 Output fields:
 - `from_address`
@@ -208,6 +213,7 @@ Inputs:
 - `page`: optional page number (default `1`).
 - `page_size`: optional page size (default `10`).
 - `key_name`: optional signer key name. Uses key address when provided.
+- `relay_base_url`: optional Relay API base URL override for this call.
 
 Output fields:
 - `page`
@@ -223,6 +229,7 @@ Inputs:
 - `address`: optional EVM address.
 - `scan_page_size`: optional scan size from latest list page (default `20`).
 - `key_name`: optional signer key name. Uses key address when provided.
+- `relay_base_url`: optional Relay API base URL override for this call.
 
 Output fields:
 - `kind`: `deposit`
