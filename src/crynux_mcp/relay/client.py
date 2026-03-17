@@ -43,7 +43,7 @@ class RelayApiClient:
     ) -> RelayWithdrawCreateResult:
         payload = self._request_json(
             method="POST",
-            path=f"/v1/client/{address}/withdraw",
+            path=f"/v1/relay_account/{address}/withdraw",
             token=token,
             body={
                 "amount": amount,
@@ -65,7 +65,7 @@ class RelayApiClient:
     def list_withdraws(self, *, address: str, page: int, page_size: int, token: str) -> RelayWithdrawListResult:
         payload = self._request_json(
             method="GET",
-            path=f"/v1/client/{address}/withdraw/list",
+            path=f"/v1/relay_account/{address}/withdraw/list",
             token=token,
             params={"page": page, "page_size": page_size},
         )
@@ -84,7 +84,7 @@ class RelayApiClient:
     def list_deposits(self, *, address: str, page: int, page_size: int, token: str) -> RelayDepositListResult:
         payload = self._request_json(
             method="GET",
-            path=f"/v1/client/{address}/deposit/list",
+            path=f"/v1/relay_account/{address}/deposit/list",
             token=token,
             params={"page": page, "page_size": page_size},
         )

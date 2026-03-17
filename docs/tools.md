@@ -137,6 +137,10 @@ Output fields:
 
 ### Relay
 
+`relay_base_url` input rule for all Relay actions:
+- Use the Relay root URL only, for example `http://127.0.0.1:8080`.
+- Do not include `/v1` in `relay_base_url`.
+
 ## relay_get_account_balance
 
 Inputs:
