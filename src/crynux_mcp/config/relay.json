@@ -1,9 +1,15 @@
 {
-  "base_url": "https://relay.crynux.io",
+  "default_env": "production",
   "timeout_seconds": 10,
   "auth_safety_margin_seconds": 30,
-  "deposit_addresses": {
-    "dymension": "0x2003D1F047C1948cfE12e449379e3ce487070765",
-    "near": "0x2003D1F047C1948cfE12e449379e3ce487070765"
+  "environments": {
+    "production": {
+      "base_url": "https://relay.crynux.io",
+      "deposit_address": "0x95dAd4af9aCaDEaf1704d3C980e7f571A9c5C5a0"
+    },
+    "staging": {
+      "base_url": "https://staging.relay.crynux.io",
+      "deposit_address": "0x7bB0A0582893c09ED48397BFACDdbbd478eB4839"
+    }
   }
 }

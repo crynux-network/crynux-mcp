@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from crynux_mcp.config.loader import ChainConfig, NativeCurrency
 from crynux_mcp.server import (
     handle_relay_deposit_initiate,
     handle_relay_deposit_latest_status,
@@ -16,8 +17,32 @@ from crynux_mcp.relay.models import (
 )
 
 
+def _mainnet_chain(network_key: str = "crynux-on-base") -> ChainConfig:
+    return ChainConfig(
+        network_key=network_key,
+        network_kind="mainnet",
+        chain_id=18896214,
+        chain_name="Crynux on Base",
+        rpc_url="https://json-rpc.base.crynux.io",
+        native_currency=NativeCurrency(name="Crynux", symbol="CNX", decimals=18),
+        contracts={},
+    )
+
+
+def _testnet_chain(network_key: str = "crynux-on-base-sepolia") -> ChainConfig:
+    return ChainConfig(
+        network_key=network_key,
+        network_kind="testnet",
+        chain_id=188962142,
+        chain_name="Crynux on Base Sepolia",
+        rpc_url="https://json-rpc.base-sepolia.crynux.io",
+        native_currency=NativeCurrency(name="Crynux", symbol="CNX", decimals=18),
+        contracts={},
+    )
+
+
 def test_handle_relay_get_auth_token_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    monkeypatch.setattr("crynux_mcp.server._resolve_network_key", lambda network: "dymension")
+    monkeypatch.setattr("crynux_mcp.server._resolve_network_key", lambda network: "crynux-on-base")
     monkeypatch.setattr(
         "crynux_mcp.server._get_relay_token",
         lambda address, key_name=None, force_refresh=False, **_kwargs: RelayAuthTokenResult(
@@ -28,7 +53,7 @@ def test_handle_relay_get_auth_token_shape(monkeypatch) -> None:  # type: ignore
     )
 
     payload = handle_relay_get_auth_token(
-        network="dymension",
+        network="crynux-on-base",
         address="0x1111111111111111111111111111111111111111",
     )
     assert payload["token"] == "jwt-abc"
@@ -93,9 +118,10 @@ def test_handle_relay_get_account_balance_uses_custom_relay_base_url(monkeypatch
     class FakeRelayAuth:
         pass
 
-    def fake_resolve_relay_context(relay_base_url: str | None = None):
+    def fake_resolve_relay_context(relay_env: str | None = None, relay_base_url: str | None = None):
+        captured["relay_env"] = relay_env
         captured["relay_base_url"] = relay_base_url
-        return FakeRelayApi(), FakeRelayAuth()
+        return "staging", FakeRelayApi(), FakeRelayAuth()
 
     def fake_get_relay_token(*, address: str, key_name=None, force_refresh=False, relay_api=None, relay_auth_manager=None):
         captured["token_address"] = address
@@ -110,9 +136,11 @@ def test_handle_relay_get_account_balance_uses_custom_relay_base_url(monkeypatch
 
     payload = handle_relay_get_account_balance(
         address="0x1111111111111111111111111111111111111111",
+        relay_env="staging",
         relay_base_url="https://relay.custom.test",
     )
     assert payload["balance_wei"] == "42"
+    assert captured["relay_env"] == "staging"
     assert captured["relay_base_url"] == "https://relay.custom.test"
     assert captured["token_relay_api"] is True
     assert captured["token_relay_auth"] is True
@@ -120,7 +148,10 @@ def test_handle_relay_get_account_balance_uses_custom_relay_base_url(monkeypatch
 
 
 def test_handle_relay_withdraw_latest_status_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    monkeypatch.setattr("crynux_mcp.server._resolve_network_key", lambda network: "dymension")
+    monkeypatch.setattr(
+        "crynux_mcp.server._resolve_relay_env_and_chain",
+        lambda network, relay_env=None: ("production", _mainnet_chain()),
+    )
     monkeypatch.setattr(
         "crynux_mcp.server._get_relay_token",
         lambda address, key_name=None, force_refresh=False, **_kwargs: RelayAuthTokenResult(
@@ -143,7 +174,7 @@ def test_handle_relay_withdraw_latest_status_shape(monkeypatch) -> None:  # type
     )
 
     payload = handle_relay_withdraw_latest_status(
-        network="dymension",
+        network="crynux-on-base",
         address="0x1111111111111111111111111111111111111111",
     )
     assert payload["kind"] == "withdraw"
@@ -155,9 +186,6 @@ def test_handle_relay_withdraw_latest_status_shape(monkeypatch) -> None:  # type
 
 
 def test_handle_relay_withdraw_create_uses_beneficial_address_when_set(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    class FakeChain:
-        network_key = "dymension"
-
     @dataclass(frozen=True)
     class FakeBeneficialAddressResult:
         beneficial_address: str = "0x2222222222222222222222222222222222222222"
@@ -173,7 +201,11 @@ def test_handle_relay_withdraw_create_uses_beneficial_address_when_set(monkeypat
             assert node_address == "0x1111111111111111111111111111111111111111"
             return FakeBeneficialAddressResult()
 
-    monkeypatch.setattr("crynux_mcp.server.registry.resolve", lambda network: FakeChain())
+    monkeypatch.setattr(
+        "crynux_mcp.server._resolve_relay_env_and_chain",
+        lambda network, relay_env=None: ("production", _mainnet_chain()),
+    )
+    monkeypatch.setattr("crynux_mcp.server.registry.resolve", lambda network: _mainnet_chain())
     monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
     monkeypatch.setattr(
         "crynux_mcp.server._get_relay_token",
@@ -209,7 +241,7 @@ def test_handle_relay_withdraw_create_uses_beneficial_address_when_set(monkeypat
     monkeypatch.setattr("crynux_mcp.server.relay_client.create_withdraw", fake_create_withdraw)
 
     payload = handle_relay_withdraw_create(
-        network="dymension",
+        network="crynux-on-base",
         amount_wei="100",
         address="0x1111111111111111111111111111111111111111",
     )
@@ -217,7 +249,7 @@ def test_handle_relay_withdraw_create_uses_beneficial_address_when_set(monkeypat
     assert captured["benefit_address"] == "0x2222222222222222222222222222222222222222"
     assert (
         captured["action"]
-        == "Withdraw 100 from 0x1111111111111111111111111111111111111111 to 0x2222222222222222222222222222222222222222 on dymension"
+        == "Withdraw 100 from 0x1111111111111111111111111111111111111111 to 0x2222222222222222222222222222222222222222 on crynux-on-base"
     )
     assert payload["benefit_address"] == "0x2222222222222222222222222222222222222222"
     assert payload["timestamp"] == 1234567890
@@ -225,9 +257,6 @@ def test_handle_relay_withdraw_create_uses_beneficial_address_when_set(monkeypat
 
 
 def test_handle_relay_withdraw_create_falls_back_to_address_when_beneficial_not_set(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    class FakeChain:
-        network_key = "dymension"
-
     @dataclass(frozen=True)
     class FakeBeneficialAddressResult:
         beneficial_address: str = "0x0000000000000000000000000000000000000000"
@@ -243,7 +272,11 @@ def test_handle_relay_withdraw_create_falls_back_to_address_when_beneficial_not_
             assert node_address == "0x1111111111111111111111111111111111111111"
             return FakeBeneficialAddressResult()
 
-    monkeypatch.setattr("crynux_mcp.server.registry.resolve", lambda network: FakeChain())
+    monkeypatch.setattr(
+        "crynux_mcp.server._resolve_relay_env_and_chain",
+        lambda network, relay_env=None: ("production", _mainnet_chain()),
+    )
+    monkeypatch.setattr("crynux_mcp.server.registry.resolve", lambda network: _mainnet_chain())
     monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
     monkeypatch.setattr(
         "crynux_mcp.server._get_relay_token",
@@ -279,7 +312,7 @@ def test_handle_relay_withdraw_create_falls_back_to_address_when_beneficial_not_
     monkeypatch.setattr("crynux_mcp.server.relay_client.create_withdraw", fake_create_withdraw)
 
     payload = handle_relay_withdraw_create(
-        network="dymension",
+        network="crynux-on-base",
         amount_wei="100",
         address="0x1111111111111111111111111111111111111111",
     )
@@ -287,7 +320,7 @@ def test_handle_relay_withdraw_create_falls_back_to_address_when_beneficial_not_
     assert captured["benefit_address"] == "0x1111111111111111111111111111111111111111"
     assert (
         captured["action"]
-        == "Withdraw 100 from 0x1111111111111111111111111111111111111111 to 0x1111111111111111111111111111111111111111 on dymension"
+        == "Withdraw 100 from 0x1111111111111111111111111111111111111111 to 0x1111111111111111111111111111111111111111 on crynux-on-base"
     )
     assert payload["benefit_address"] == "0x1111111111111111111111111111111111111111"
     assert payload["timestamp"] == 1234567890
@@ -295,7 +328,10 @@ def test_handle_relay_withdraw_create_falls_back_to_address_when_beneficial_not_
 
 
 def test_handle_relay_deposit_latest_status_empty(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    monkeypatch.setattr("crynux_mcp.server._resolve_network_key", lambda network: "dymension")
+    monkeypatch.setattr(
+        "crynux_mcp.server._resolve_relay_env_and_chain",
+        lambda network, relay_env=None: ("production", _mainnet_chain()),
+    )
     monkeypatch.setattr(
         "crynux_mcp.server._get_relay_token",
         lambda address, key_name=None, force_refresh=False, **_kwargs: RelayAuthTokenResult(
@@ -315,7 +351,7 @@ def test_handle_relay_deposit_latest_status_empty(monkeypatch) -> None:  # type:
     )
 
     payload = handle_relay_deposit_latest_status(
-        network="dymension",
+        network="crynux-on-base",
         address="0x1111111111111111111111111111111111111111",
     )
     assert payload["kind"] == "deposit"
@@ -325,14 +361,13 @@ def test_handle_relay_deposit_latest_status_empty(monkeypatch) -> None:  # type:
     assert "address" not in payload
 
 
-def test_handle_relay_deposit_initiate_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    class FakeChain:
-        network_key = "dymension"
+def test_handle_relay_deposit_initiate_uses_deposit_address_from_relay_env(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    captured: dict[str, object] = {}
 
     @dataclass(frozen=True)
     class FakeTransferResult:
         from_address: str = "0x1111111111111111111111111111111111111111"
-        to: str = "0x2003D1F047C1948cfE12e449379e3ce487070765"
+        to: str = "0x7bB0A0582893c09ED48397BFACDdbbd478eB4839"
         value_wei: str = "100"
         tx_hash: str = "0xabc"
 
@@ -340,57 +375,75 @@ def test_handle_relay_deposit_initiate_shape(monkeypatch) -> None:  # type: igno
         def __init__(self, _chain) -> None:
             pass
 
-        def transfer_native(self, **_kwargs):
+        def transfer_native(self, **kwargs):
+            captured["to"] = kwargs["to"]
             return FakeTransferResult()
 
     class FakeRelayConfig:
-        def get_deposit_address(self, network: str) -> str:
-            _ = network
-            return "0x2003D1F047C1948cfE12e449379e3ce487070765"
+        def resolve_env(self, relay_env=None):
+            selected = (relay_env or "staging").strip().lower()
+            return selected, object()
 
-    monkeypatch.setattr("crynux_mcp.server.registry.resolve", lambda network: FakeChain())
-    monkeypatch.setattr("crynux_mcp.server.get_private_key", lambda name=None: "0xabc")
-    monkeypatch.setattr("crynux_mcp.server.relay_config", FakeRelayConfig())
-    monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
+        def get_deposit_address(self, relay_env=None):
+            captured["deposit_env"] = relay_env
+            return "0x7bB0A0582893c09ED48397BFACDdbbd478eB4839"
 
-    payload = handle_relay_deposit_initiate(network="dymension", amount="1")
-    assert payload["to"] == "0x2003D1F047C1948cfE12e449379e3ce487070765"
-    assert payload["tx_hash"] == "0xabc"
-    assert "deposit_address" not in payload
-
-
-def test_handle_relay_deposit_initiate_accepts_relay_base_url(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    class FakeChain:
-        network_key = "dymension"
-
-    @dataclass(frozen=True)
-    class FakeTransferResult:
-        from_address: str = "0x1111111111111111111111111111111111111111"
-        to: str = "0x2003D1F047C1948cfE12e449379e3ce487070765"
-        value_wei: str = "100"
-        tx_hash: str = "0xabc"
-
-    class FakeClient:
-        def __init__(self, _chain) -> None:
-            pass
-
-        def transfer_native(self, **_kwargs):
-            return FakeTransferResult()
-
-    class FakeRelayConfig:
-        def get_deposit_address(self, network: str) -> str:
-            _ = network
-            return "0x2003D1F047C1948cfE12e449379e3ce487070765"
-
-    monkeypatch.setattr("crynux_mcp.server.registry.resolve", lambda network: FakeChain())
+    monkeypatch.setattr(
+        "crynux_mcp.server._resolve_relay_env_and_chain",
+        lambda network, relay_env=None: ("staging", _testnet_chain()),
+    )
     monkeypatch.setattr("crynux_mcp.server.get_private_key", lambda name=None: "0xabc")
     monkeypatch.setattr("crynux_mcp.server.relay_config", FakeRelayConfig())
     monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
 
     payload = handle_relay_deposit_initiate(
-        network="dymension",
+        network="crynux-on-base-sepolia",
         amount="1",
-        relay_base_url="https://relay.custom.test",
+        relay_env="staging",
     )
-    assert payload["to"] == "0x2003D1F047C1948cfE12e449379e3ce487070765"
+    assert captured["deposit_env"] == "staging"
+    assert captured["to"] == "0x7bB0A0582893c09ED48397BFACDdbbd478eB4839"
+    assert payload["to"] == "0x7bB0A0582893c09ED48397BFACDdbbd478eB4839"
     assert payload["tx_hash"] == "0xabc"
+    assert "deposit_address" not in payload
+
+
+def test_handle_relay_deposit_initiate_rejects_mismatched_env_network(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    class FakeRegistry:
+        def resolve(self, network):
+            _ = network
+            return _mainnet_chain()
+
+    monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
+
+    try:
+        handle_relay_deposit_initiate(
+            network="crynux-on-base",
+            amount="1",
+            relay_env="staging",
+        )
+    except RuntimeError as exc:
+        assert "INVALID_RELAY_NETWORK_PAIRING" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError")
+
+
+def test_handle_relay_withdraw_create_rejects_mismatched_env_network(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    class FakeRegistry:
+        def resolve(self, network):
+            _ = network
+            return _testnet_chain()
+
+    monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
+
+    try:
+        handle_relay_withdraw_create(
+            network="crynux-on-base-sepolia",
+            amount_wei="100",
+            address="0x1111111111111111111111111111111111111111",
+            relay_env="production",
+        )
+    except RuntimeError as exc:
+        assert "INVALID_RELAY_NETWORK_PAIRING" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError")

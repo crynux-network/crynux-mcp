@@ -1,13 +1,19 @@
 from dataclasses import dataclass
 
 from crynux_mcp.server import (
+    handle_delegated_stake,
+    handle_delegated_unstake,
+    handle_force_unstake_node,
     handle_get_balance,
     handle_get_beneficial_address,
+    handle_get_delegated_staking_infos,
     handle_get_latest_block_number,
-    handle_get_node_credits,
     handle_get_node_staking_info,
+    handle_send_raw_transaction,
     handle_set_beneficial_address,
+    handle_sign_transaction,
     handle_transfer_native,
+    handle_try_unstake_node,
 )
 
 
@@ -32,7 +38,10 @@ def test_handle_get_balance_shape(monkeypatch) -> None:  # type: ignore[no-untyp
     monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
     monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
 
-    payload = handle_get_balance(network="dymension", address="0x1111111111111111111111111111111111111111")
+    payload = handle_get_balance(
+        network="crynux-on-base",
+        address="0x1111111111111111111111111111111111111111",
+    )
     assert payload["symbol"] == "CNX"
     assert "network" not in payload
     assert "address" not in payload
@@ -58,7 +67,7 @@ def test_handle_get_latest_block_number_shape(monkeypatch) -> None:  # type: ign
     monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
     monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
 
-    payload = handle_get_latest_block_number(network="dymension")
+    payload = handle_get_latest_block_number(network="crynux-on-base")
     assert payload["block_number"] == 123456
     assert "network" not in payload
     assert "chain_id" not in payload
@@ -82,7 +91,7 @@ def test_handle_transfer_sanitizes_private_key_error(monkeypatch) -> None:  # ty
 
     try:
         handle_transfer_native(
-            network="dymension",
+            network="crynux-on-base",
             to="0x1111111111111111111111111111111111111111",
             amount="1",
         )
@@ -113,7 +122,7 @@ def test_handle_transfer_requires_private_key_source(monkeypatch) -> None:  # ty
 
     try:
         handle_transfer_native(
-            network="dymension",
+            network="crynux-on-base",
             to="0x1111111111111111111111111111111111111111",
             amount="1",
         )
@@ -121,6 +130,72 @@ def test_handle_transfer_requires_private_key_source(monkeypatch) -> None:  # ty
         assert str(exc) == "MISSING_PRIVATE_KEY: no signer key found."
     else:
         raise AssertionError("Expected RuntimeError")
+
+
+def test_handle_sign_transaction_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    @dataclass(frozen=True)
+    class FakeResult:
+        from_address: str = "0x1111111111111111111111111111111111111111"
+        to: str = "0x2222222222222222222222222222222222222222"
+        value_wei: str = "0"
+        data: str = "0xabcdef"
+        nonce: int = 7
+        gas: int = 21000
+        gas_price_wei: str = "100"
+        chain_id: int = 18896214
+        raw_transaction: str = "0xf86c"
+        tx_hash: str = "0xabc"
+
+    class FakeClient:
+        def __init__(self, _chain) -> None:
+            pass
+
+        def sign_transaction(self, **_kwargs):
+            return FakeResult()
+
+    class FakeRegistry:
+        def resolve(self, _network):
+            return object()
+
+    monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
+    monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
+    monkeypatch.setattr("crynux_mcp.server.get_private_key", lambda name=None: "0xabc")
+
+    payload = handle_sign_transaction(
+        network="crynux-on-base",
+        to="0x2222222222222222222222222222222222222222",
+        data="0xabcdef",
+    )
+    assert payload["raw_transaction"] == "0xf86c"
+    assert payload["tx_hash"] == "0xabc"
+    assert payload["data"] == "0xabcdef"
+    assert "private_key" not in payload
+    assert "network" not in payload
+
+
+def test_handle_send_raw_transaction_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    @dataclass(frozen=True)
+    class FakeResult:
+        tx_hash: str = "0xdef"
+
+    class FakeClient:
+        def __init__(self, _chain) -> None:
+            pass
+
+        def send_raw_transaction(self, raw_transaction: str):
+            assert raw_transaction == "0xf86c"
+            return FakeResult()
+
+    class FakeRegistry:
+        def resolve(self, _network):
+            return object()
+
+    monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
+    monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
+
+    payload = handle_send_raw_transaction(network="crynux-on-base", raw_transaction="0xf86c")
+    assert payload["tx_hash"] == "0xdef"
+    assert "network" not in payload
 
 
 def test_handle_get_beneficial_address_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -146,7 +221,7 @@ def test_handle_get_beneficial_address_shape(monkeypatch) -> None:  # type: igno
     monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
 
     payload = handle_get_beneficial_address(
-        network="dymension",
+        network="crynux-on-base",
         address="0x1111111111111111111111111111111111111111",
     )
     assert payload["address"] == "0x1111111111111111111111111111111111111111"
@@ -180,7 +255,7 @@ def test_handle_set_beneficial_address_shape(monkeypatch) -> None:  # type: igno
     monkeypatch.setattr("crynux_mcp.server.get_private_key", lambda name=None: "0xabc")
 
     payload = handle_set_beneficial_address(
-        network="dymension",
+        network="crynux-on-base",
         beneficial_address="0x2222222222222222222222222222222222222222",
     )
     assert payload["address"] == "0x1111111111111111111111111111111111111111"
@@ -197,9 +272,12 @@ def test_handle_get_node_staking_info_shape(monkeypatch) -> None:  # type: ignor
         address: str = "0x1111111111111111111111111111111111111111"
         staked_balance_wei: str = "1000000000000000000"
         staked_balance_formatted: str = "1"
-        staked_credits: str = "2"
-        status: int = 1
-        unstake_timestamp: str = "0"
+        status: int = 2
+        unstake_timestamp: str = "1000"
+        force_unstake_delay_seconds: str = "1800"
+        force_unstake_available_at: str = "2801"
+        force_unstake_available_in_seconds: str = "120"
+        can_force_unstake: bool = False
 
     class FakeClient:
         def __init__(self, _chain) -> None:
@@ -217,31 +295,33 @@ def test_handle_get_node_staking_info_shape(monkeypatch) -> None:  # type: ignor
     monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
 
     payload = handle_get_node_staking_info(
-        network="dymension",
+        network="crynux-on-base",
         address="0x1111111111111111111111111111111111111111",
     )
     assert payload["address"] == "0x1111111111111111111111111111111111111111"
     assert payload["staked_balance_wei"] == "1000000000000000000"
-    assert payload["staked_credits"] == "2"
-    assert payload["status"] == 1
+    assert payload["status"] == 2
+    assert payload["force_unstake_delay_seconds"] == "1800"
+    assert payload["force_unstake_available_at"] == "2801"
+    assert payload["force_unstake_available_in_seconds"] == "120"
+    assert payload["can_force_unstake"] is False
+    assert "staked_credits" not in payload
     assert "network" not in payload
     assert "contract_address" not in payload
     assert "chain_id" not in payload
 
 
-def test_handle_get_node_credits_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_handle_try_unstake_node_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     @dataclass(frozen=True)
     class FakeResult:
         address: str = "0x1111111111111111111111111111111111111111"
-        credits: str = "123"
-        credits_formatted: str = "0.000000000000000123"
+        tx_hash: str = "0xabc"
 
     class FakeClient:
         def __init__(self, _chain) -> None:
             pass
 
-        def get_node_credits(self, node_address: str):
-            _ = node_address
+        def try_unstake_node(self, **_kwargs):
             return FakeResult()
 
     class FakeRegistry:
@@ -250,31 +330,109 @@ def test_handle_get_node_credits_shape(monkeypatch) -> None:  # type: ignore[no-
 
     monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
     monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
+    monkeypatch.setattr("crynux_mcp.server.get_private_key", lambda name=None: "0xabc")
 
-    payload = handle_get_node_credits(
-        network="dymension",
+    payload = handle_try_unstake_node(network="crynux-on-base")
+    assert payload["address"] == "0x1111111111111111111111111111111111111111"
+    assert payload["tx_hash"] == "0xabc"
+    assert "network" not in payload
+
+
+def test_handle_force_unstake_node_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    @dataclass(frozen=True)
+    class FakeResult:
+        address: str = "0x1111111111111111111111111111111111111111"
+        unstaked_amount_wei: str = "1000000000000000000"
+        tx_hash: str = "0xdef"
+
+    class FakeClient:
+        def __init__(self, _chain) -> None:
+            pass
+
+        def force_unstake_node(self, **_kwargs):
+            return FakeResult()
+
+    class FakeRegistry:
+        def resolve(self, _network):
+            return object()
+
+    monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
+    monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
+    monkeypatch.setattr("crynux_mcp.server.get_private_key", lambda name=None: "0xabc")
+
+    payload = handle_force_unstake_node(network="crynux-on-base")
+    assert payload["address"] == "0x1111111111111111111111111111111111111111"
+    assert payload["unstaked_amount_wei"] == "1000000000000000000"
+    assert payload["tx_hash"] == "0xdef"
+    assert "network" not in payload
+
+
+def test_handle_get_delegated_staking_infos_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    @dataclass(frozen=True)
+    class FakeEntry:
+        node_address: str
+        stake_amount_wei: str
+        stake_amount_formatted: str
+
+    @dataclass(frozen=True)
+    class FakeResult:
+        address: str
+        total_stake_wei: str
+        total_stake_formatted: str
+        stakes: list[FakeEntry]
+
+    class FakeClient:
+        def __init__(self, _chain) -> None:
+            pass
+
+        def get_delegated_staking_infos(self, delegator_address: str):
+            assert delegator_address == "0x1111111111111111111111111111111111111111"
+            return FakeResult(
+                address="0x1111111111111111111111111111111111111111",
+                total_stake_wei="1000000000000000000",
+                total_stake_formatted="1",
+                stakes=[
+                    FakeEntry(
+                        node_address="0x2222222222222222222222222222222222222222",
+                        stake_amount_wei="1000000000000000000",
+                        stake_amount_formatted="1",
+                    )
+                ],
+            )
+
+    class FakeRegistry:
+        def resolve(self, _network):
+            return object()
+
+    monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
+    monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
+
+    payload = handle_get_delegated_staking_infos(
+        network="crynux-on-base",
         address="0x1111111111111111111111111111111111111111",
     )
     assert payload["address"] == "0x1111111111111111111111111111111111111111"
-    assert payload["credits"] == "123"
-    assert payload["credits_formatted"] == "0.000000000000000123"
+    assert payload["total_stake_wei"] == "1000000000000000000"
+    assert len(payload["stakes"]) == 1
+    assert payload["stakes"][0]["node_address"] == "0x2222222222222222222222222222222222222222"
     assert "network" not in payload
-    assert "contract_address" not in payload
-    assert "chain_id" not in payload
 
 
-def test_handle_get_node_credits_accepts_key_name(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_handle_delegated_stake_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     @dataclass(frozen=True)
     class FakeResult:
-        credits: str = "123"
-        credits_formatted: str = "0.000000000000000123"
+        address: str = "0x1111111111111111111111111111111111111111"
+        node_address: str = "0x2222222222222222222222222222222222222222"
+        previous_amount_wei: str = "0"
+        stake_amount_wei: str = "2000000000000000000"
+        value_sent_wei: str = "2000000000000000000"
+        tx_hash: str = "0xabc"
 
     class FakeClient:
         def __init__(self, _chain) -> None:
             pass
 
-        def get_node_credits(self, node_address: str):
-            assert node_address == "0xabc0000000000000000000000000000000000000"
+        def delegated_stake(self, **_kwargs):
             return FakeResult()
 
     class FakeRegistry:
@@ -283,11 +441,48 @@ def test_handle_get_node_credits_accepts_key_name(monkeypatch) -> None:  # type:
 
     monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
     monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
-    monkeypatch.setattr(
-        "crynux_mcp.server.list_local_keys",
-        lambda: [{"name": "my-key", "address": "0xabc0000000000000000000000000000000000000", "is_default": True}],
-    )
+    monkeypatch.setattr("crynux_mcp.server.get_private_key", lambda name=None: "0xabc")
 
-    payload = handle_get_node_credits(network="dymension", key_name="my-key")
-    assert payload["credits"] == "123"
+    payload = handle_delegated_stake(
+        network="crynux-on-base",
+        node_address="0x2222222222222222222222222222222222222222",
+        amount="2",
+    )
+    assert payload["node_address"] == "0x2222222222222222222222222222222222222222"
+    assert payload["stake_amount_wei"] == "2000000000000000000"
+    assert payload["value_sent_wei"] == "2000000000000000000"
+    assert payload["tx_hash"] == "0xabc"
+    assert "network" not in payload
+
+
+def test_handle_delegated_unstake_shape(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    @dataclass(frozen=True)
+    class FakeResult:
+        address: str = "0x1111111111111111111111111111111111111111"
+        node_address: str = "0x2222222222222222222222222222222222222222"
+        unstaked_amount_wei: str = "1000000000000000000"
+        tx_hash: str = "0xdef"
+
+    class FakeClient:
+        def __init__(self, _chain) -> None:
+            pass
+
+        def delegated_unstake(self, **_kwargs):
+            return FakeResult()
+
+    class FakeRegistry:
+        def resolve(self, _network):
+            return object()
+
+    monkeypatch.setattr("crynux_mcp.server.EvmClient", FakeClient)
+    monkeypatch.setattr("crynux_mcp.server.registry", FakeRegistry())
+    monkeypatch.setattr("crynux_mcp.server.get_private_key", lambda name=None: "0xabc")
+
+    payload = handle_delegated_unstake(
+        network="crynux-on-base",
+        node_address="0x2222222222222222222222222222222222222222",
+    )
+    assert payload["node_address"] == "0x2222222222222222222222222222222222222222"
+    assert payload["unstaked_amount_wei"] == "1000000000000000000"
+    assert payload["tx_hash"] == "0xdef"
     assert "network" not in payload

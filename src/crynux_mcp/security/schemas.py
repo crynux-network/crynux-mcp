@@ -22,3 +22,11 @@ class KeyDeleteResult:
     @staticmethod
     def from_name(name: str) -> "KeyDeleteResult":
         return KeyDeleteResult(name=name, deleted=True)
+
+
+@dataclass(frozen=True)
+class SignMessageResult:
+    address: str
+    message: str
+    message_encoding: str
+    signature: str

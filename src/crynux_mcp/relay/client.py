@@ -25,7 +25,7 @@ class RelayApiClient:
     def get_account_balance(self, *, address: str, token: str) -> str:
         payload = self._request_json(
             method="GET",
-            path=f"/v1/balance/{address}",
+            path=f"/v2/relay_account/{address}/balance",
             token=token,
         )
         return str(payload)

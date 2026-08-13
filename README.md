@@ -9,22 +9,25 @@ MCP server for Crynux Network operations, designed for LLM clients (such as Curs
 
 ### Wallet
 
-- Wallet management with system keychain (create keys, sign transactions, list/delete/export keys, set default key)
+- Wallet management with system keychain (create keys, sign messages/transactions, list/delete/export keys, set default key)
 
 ### Blockchain
 
 - Native CNX balance query on Crynux L2 networks
 - Latest block height query on Crynux L2 networks
 - Native CNX transfer
+- Arbitrary transaction signing and raw transaction broadcast
 - Beneficial address query and on-chain update
 - Node staking query
-- Node credits query
+- Node tryUnstake and forceUnstake
+- Delegated staking query, create/update, and unstake
 
 ### Relay
 
 - Relay account balance query
 - Relay withdraw create/list/latest-status query
 - Relay deposit initiate/list/latest-status query
+- Staging and production Relay environments with env/network pairing
 
 ## Tools
 
@@ -33,7 +36,8 @@ For the full action list and detailed input/output fields, see [`docs/tools.md`]
 ## Security notes
 
 - The server never intentionally logs raw private keys.
-- `transfer_native` reads signer key from your local system keychain.
+- `transfer_native`, staking writes, `sign_message`, and `sign_transaction` read signer keys from your local system keychain.
+- `sign_message` and `sign_transaction` never return the private key. `sign_transaction` returns only the signed `raw_transaction` and metadata.
 - Optional fallback: if no keychain entry exists, it reads `CRYNUX_PRIVATE_KEY` from MCP server environment.
 - The model only sees transfer fields (`network`, `to`, `amount`, and optional gas fields), not raw key material.
 - Use dedicated low-risk wallets for AI operations, not treasury wallets.
@@ -143,13 +147,13 @@ Use [`docs/tools.md`](./docs/tools.md) as the source of truth for the full actio
 
 Example: query balance
 
-- `network`: `dymension`
+- `network`: `crynux-on-base`
 - `address`: your EVM address
 - `unit`: `ether`
 
 Example: send native CNX
 
-- `network`: `dymension`
+- `network`: `crynux-on-base`
 - `key_name`: `main` (optional, uses default local key if omitted)
 - `to`: recipient EVM address
 - `amount`: for example `0.1`
@@ -157,7 +161,7 @@ Example: send native CNX
 
 Example: query Relay account balance
 
-- `network`: `dymension`
+- `relay_env`: `production` (or `staging`)
 - `address`: your wallet EVM address
 - `key_name`: `main` (optional)
 
@@ -165,18 +169,21 @@ Relay auth token is obtained and refreshed internally for authenticated Relay ac
 
 Example: create Relay withdraw request
 
-- `network`: `dymension`
+- `network`: `crynux-on-base`
+- `relay_env`: `production`
 - `address`: your wallet EVM address
 - `amount_wei`: for example `1000000000000000000` (1 CNX)
-- `benefit_address`: optional destination address
 - `key_name`: `main` (optional)
 
 Example: initiate Relay deposit (on-chain transfer)
 
-- `network`: `dymension`
+- `network`: `crynux-on-base`
+- `relay_env`: `production`
 - `amount`: for example `1`
 - `unit`: `ether`
 - `key_name`: `main` (optional)
+
+`relay_env=staging` MUST be paired with `crynux-on-base-sepolia`. `relay_env=production` MUST be paired with `crynux-on-base`.
 
 Signer key source for transfer:
 
@@ -212,7 +219,7 @@ Relay API configuration is stored in:
 
 - `src/crynux_mcp/config/relay.json`
 
-Update this file to change Relay URL, timeout, and per-network deposit addresses.
+Update this file to change Relay environments, URLs, timeout, and per-environment deposit addresses.
 
 ## Tests
 

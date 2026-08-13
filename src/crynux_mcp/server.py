@@ -7,10 +7,10 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from crynux_mcp.blockchain.evm_client import EvmClient
-from crynux_mcp.config.loader import load_chain_registry
+from crynux_mcp.config.loader import ChainConfig, load_chain_registry
 from crynux_mcp.relay.auth import RelayAuthManager
 from crynux_mcp.relay.client import RelayApiClient
-from crynux_mcp.relay.config import load_relay_config
+from crynux_mcp.relay.config import assert_relay_env_matches_network, load_relay_config
 from crynux_mcp.relay.models import (
     RelayAccountBalanceResult,
     RelayAuthTokenResult,
@@ -26,11 +26,16 @@ from crynux_mcp.security.key_store import (
 )
 from crynux_mcp.security.redaction import redact_secrets, sanitize_error_message
 from crynux_mcp.security.schemas import KeyDeleteResult, KeyListResult
+from crynux_mcp.security.signing import sign_message as sign_local_message
 
 mcp = FastMCP("crynux-mcp")
 registry = load_chain_registry()
 relay_config = load_relay_config()
-relay_client = RelayApiClient(base_url=relay_config.base_url, timeout_seconds=relay_config.timeout_seconds)
+_default_relay_env = relay_config.environments[relay_config.default_env]
+relay_client = RelayApiClient(
+    base_url=_default_relay_env.base_url,
+    timeout_seconds=relay_config.timeout_seconds,
+)
 relay_auth = RelayAuthManager(auth_safety_margin_seconds=relay_config.auth_safety_margin_seconds)
 _relay_clients: dict[str, RelayApiClient] = {}
 _relay_auth_managers: dict[str, RelayAuthManager] = {}
@@ -136,6 +141,67 @@ def handle_transfer_native(
         ) from exc
 
 
+def handle_sign_transaction(
+    network: str | None,
+    to: str | None = None,
+    value: str | None = "0",
+    unit: str | None = "wei",
+    data: str | None = "0x",
+    nonce: int | None = None,
+    key_name: str | None = None,
+    gas_price_wei: int | None = None,
+    gas_limit: int | None = None,
+) -> dict[str, Any]:
+    private_key: str | None = None
+    try:
+        private_key = get_private_key(name=key_name)
+        chain = registry.resolve(network)
+        client = EvmClient(chain)
+        result = client.sign_transaction(
+            private_key=private_key,
+            to=to,
+            value=value,
+            unit=unit,
+            data=data,
+            nonce=nonce,
+            gas_price_wei=gas_price_wei,
+            gas_limit=gas_limit,
+        )
+        return _to_response_payload(result)
+    except Exception as exc:  # noqa: BLE001
+        raise _execution_error(
+            exc,
+            {
+                "network": network,
+                "key_name": key_name,
+                "private_key": private_key,
+                "to": to,
+                "value": value,
+                "unit": unit,
+                "data": data,
+                "nonce": nonce,
+                "gas_price_wei": gas_price_wei,
+                "gas_limit": gas_limit,
+            },
+        ) from exc
+
+
+def handle_send_raw_transaction(
+    network: str | None,
+    raw_transaction: str,
+) -> dict[str, Any]:
+    try:
+        chain = registry.resolve(network)
+        client = EvmClient(chain)
+        result = client.send_raw_transaction(raw_transaction=raw_transaction)
+        return _to_response_payload(result)
+    except Exception as exc:  # noqa: BLE001
+        raise _execution_error(
+            exc,
+            {"network": network, "raw_transaction": raw_transaction},
+        ) from exc
+
+
 def handle_get_beneficial_address(
     network: str | None,
     address: str | None = None,
@@ -197,7 +263,67 @@ def handle_get_node_staking_info(
         raise _execution_error(exc, {"network": network, "address": address, "key_name": key_name}) from exc
 
 
-def handle_get_node_credits(
+def handle_try_unstake_node(
+    network: str | None,
+    key_name: str | None = None,
+    gas_price_wei: int | None = None,
+    gas_limit: int | None = None,
+) -> dict[str, Any]:
+    private_key: str | None = None
+    try:
+        private_key = get_private_key(name=key_name)
+        chain = registry.resolve(network)
+        client = EvmClient(chain)
+        result = client.try_unstake_node(
+            private_key=private_key,
+            gas_price_wei=gas_price_wei,
+            gas_limit=gas_limit,
+        )
+        return _to_response_payload(result)
+    except Exception as exc:  # noqa: BLE001
+        raise _execution_error(
+            exc,
+            {
+                "network": network,
+                "key_name": key_name,
+                "private_key": private_key,
+                "gas_price_wei": gas_price_wei,
+                "gas_limit": gas_limit,
+            },
+        ) from exc
+
+
+def handle_force_unstake_node(
+    network: str | None,
+    key_name: str | None = None,
+    gas_price_wei: int | None = None,
+    gas_limit: int | None = None,
+) -> dict[str, Any]:
+    private_key: str | None = None
+    try:
+        private_key = get_private_key(name=key_name)
+        chain = registry.resolve(network)
+        client = EvmClient(chain)
+        result = client.force_unstake_node(
+            private_key=private_key,
+            gas_price_wei=gas_price_wei,
+            gas_limit=gas_limit,
+        )
+        return _to_response_payload(result)
+    except Exception as exc:  # noqa: BLE001
+        raise _execution_error(
+            exc,
+            {
+                "network": network,
+                "key_name": key_name,
+                "private_key": private_key,
+                "gas_price_wei": gas_price_wei,
+                "gas_limit": gas_limit,
+            },
+        ) from exc
+
+
+def handle_get_delegated_staking_infos(
     network: str | None,
     address: str | None = None,
     key_name: str | None = None,
@@ -206,14 +332,96 @@ def handle_get_node_credits(
         chain = registry.resolve(network)
         client = EvmClient(chain)
         resolved_address = _resolve_address(address=address, key_name=key_name)
-        return _to_response_payload(client.get_node_credits(node_address=resolved_address))
+        return _to_response_payload(client.get_delegated_staking_infos(delegator_address=resolved_address))
     except Exception as exc:  # noqa: BLE001
         raise _execution_error(exc, {"network": network, "address": address, "key_name": key_name}) from exc
+
+
+def handle_delegated_stake(
+    network: str | None,
+    node_address: str,
+    amount: str,
+    key_name: str | None = None,
+    unit: str | None = "ether",
+    gas_price_wei: int | None = None,
+    gas_limit: int | None = None,
+) -> dict[str, Any]:
+    private_key: str | None = None
+    try:
+        private_key = get_private_key(name=key_name)
+        chain = registry.resolve(network)
+        client = EvmClient(chain)
+        result = client.delegated_stake(
+            private_key=private_key,
+            node_address=node_address,
+            amount=amount,
+            unit=unit,
+            gas_price_wei=gas_price_wei,
+            gas_limit=gas_limit,
+        )
+        return _to_response_payload(result)
+    except Exception as exc:  # noqa: BLE001
+        raise _execution_error(
+            exc,
+            {
+                "network": network,
+                "key_name": key_name,
+                "private_key": private_key,
+                "node_address": node_address,
+                "amount": amount,
+                "unit": unit,
+                "gas_price_wei": gas_price_wei,
+                "gas_limit": gas_limit,
+            },
+        ) from exc
+
+
+def handle_delegated_unstake(
+    network: str | None,
+    node_address: str,
+    key_name: str | None = None,
+    gas_price_wei: int | None = None,
+    gas_limit: int | None = None,
+) -> dict[str, Any]:
+    private_key: str | None = None
+    try:
+        private_key = get_private_key(name=key_name)
+        chain = registry.resolve(network)
+        client = EvmClient(chain)
+        result = client.delegated_unstake(
+            private_key=private_key,
+            node_address=node_address,
+            gas_price_wei=gas_price_wei,
+            gas_limit=gas_limit,
+        )
+        return _to_response_payload(result)
+    except Exception as exc:  # noqa: BLE001
+        raise _execution_error(
+            exc,
+            {
+                "network": network,
+                "key_name": key_name,
+                "private_key": private_key,
+                "node_address": node_address,
+                "gas_price_wei": gas_price_wei,
+                "gas_limit": gas_limit,
+            },
+        ) from exc
 
 
 def _resolve_network_key(network: str | None) -> str:
     chain = registry.resolve(network)
     return chain.network_key
+
+
+def _resolve_relay_env_and_chain(
+    network: str | None,
+    relay_env: str | None = None,
+) -> tuple[str, ChainConfig]:
+    chain = registry.resolve(network)
+    env_key, _ = relay_config.resolve_env(relay_env)
+    assert_relay_env_matches_network(env_key, chain)
+    return env_key, chain
 
 
 def _resolve_relay_withdraw_destination(
@@ -234,24 +442,31 @@ def _relay_token_service_name(base_url: str) -> str:
     return f"crynux-mcp-relay:{digest}"
 
 
-def _resolve_relay_context(relay_base_url: str | None = None) -> tuple[RelayApiClient, RelayAuthManager]:
-    normalized = (relay_base_url or "").strip().rstrip("/")
-    if not normalized or normalized == relay_config.base_url:
-        return relay_client, relay_auth
+def _resolve_relay_context(
+    relay_env: str | None = None,
+    relay_base_url: str | None = None,
+) -> tuple[str, RelayApiClient, RelayAuthManager]:
+    env_key, env_cfg = relay_config.resolve_env(relay_env)
+    base_url = relay_config.get_base_url(relay_env=env_key, relay_base_url=relay_base_url)
 
-    cached_client = _relay_clients.get(normalized)
-    cached_auth = _relay_auth_managers.get(normalized)
+    if base_url == _default_relay_env.base_url and env_key == relay_config.default_env:
+        override = (relay_base_url or "").strip()
+        if not override:
+            return env_key, relay_client, relay_auth
+
+    cached_client = _relay_clients.get(base_url)
+    cached_auth = _relay_auth_managers.get(base_url)
     if cached_client is not None and cached_auth is not None:
-        return cached_client, cached_auth
+        return env_key, cached_client, cached_auth
 
-    client = RelayApiClient(base_url=normalized, timeout_seconds=relay_config.timeout_seconds)
+    client = RelayApiClient(base_url=base_url, timeout_seconds=relay_config.timeout_seconds)
     auth_manager = RelayAuthManager(
         auth_safety_margin_seconds=relay_config.auth_safety_margin_seconds,
-        token_service_name=_relay_token_service_name(normalized),
+        token_service_name=_relay_token_service_name(base_url),
     )
-    _relay_clients[normalized] = client
-    _relay_auth_managers[normalized] = auth_manager
-    return client, auth_manager
+    _relay_clients[base_url] = client
+    _relay_auth_managers[base_url] = auth_manager
+    return env_key, client, auth_manager
 
 
 def _get_relay_token(
@@ -293,11 +508,15 @@ def handle_relay_get_auth_token(
 def handle_relay_get_account_balance(
     address: str | None = None,
     key_name: str | None = None,
+    relay_env: str | None = None,
     relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     token: str | None = None
     try:
-        relay_api, relay_auth_manager = _resolve_relay_context(relay_base_url)
+        _, relay_api, relay_auth_manager = _resolve_relay_context(
+            relay_env=relay_env,
+            relay_base_url=relay_base_url,
+        )
         resolved_address = _resolve_address(address=address, key_name=key_name)
         token_info = _get_relay_token(
             address=resolved_address,
@@ -311,7 +530,13 @@ def handle_relay_get_account_balance(
     except Exception as exc:  # noqa: BLE001
         raise _execution_error(
             exc,
-            {"address": address, "key_name": key_name, "relay_base_url": relay_base_url, "token": token},
+            {
+                "address": address,
+                "key_name": key_name,
+                "relay_env": relay_env,
+                "relay_base_url": relay_base_url,
+                "token": token,
+            },
         ) from exc
 
 
@@ -320,12 +545,17 @@ def handle_relay_withdraw_create(
     amount_wei: str,
     address: str | None = None,
     key_name: str | None = None,
+    relay_env: str | None = None,
     relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     token: str | None = None
     signature: str | None = None
     try:
-        relay_api, relay_auth_manager = _resolve_relay_context(relay_base_url)
+        env_key, _ = _resolve_relay_env_and_chain(network=network, relay_env=relay_env)
+        _, relay_api, relay_auth_manager = _resolve_relay_context(
+            relay_env=env_key,
+            relay_base_url=relay_base_url,
+        )
         network_key, resolved_address, destination = _resolve_relay_withdraw_destination(
             network=network,
             address=address,
@@ -362,6 +592,7 @@ def handle_relay_withdraw_create(
                 "address": address,
                 "amount_wei": amount_wei,
                 "key_name": key_name,
+                "relay_env": relay_env,
                 "relay_base_url": relay_base_url,
                 "token": token,
                 "signature": signature,
@@ -374,11 +605,15 @@ def handle_relay_withdraw_list(
     page: int = 1,
     page_size: int = 10,
     key_name: str | None = None,
+    relay_env: str | None = None,
     relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     token: str | None = None
     try:
-        relay_api, relay_auth_manager = _resolve_relay_context(relay_base_url)
+        _, relay_api, relay_auth_manager = _resolve_relay_context(
+            relay_env=relay_env,
+            relay_base_url=relay_base_url,
+        )
         resolved_address = _resolve_address(address=address, key_name=key_name)
         token_info = _get_relay_token(
             address=resolved_address,
@@ -397,6 +632,7 @@ def handle_relay_withdraw_list(
                 "page": page,
                 "page_size": page_size,
                 "key_name": key_name,
+                "relay_env": relay_env,
                 "relay_base_url": relay_base_url,
                 "token": token,
             },
@@ -408,12 +644,16 @@ def handle_relay_withdraw_latest_status(
     address: str | None = None,
     scan_page_size: int = 20,
     key_name: str | None = None,
+    relay_env: str | None = None,
     relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     token: str | None = None
     try:
-        relay_api, relay_auth_manager = _resolve_relay_context(relay_base_url)
-        _ = _resolve_network_key(network)
+        env_key, _ = _resolve_relay_env_and_chain(network=network, relay_env=relay_env)
+        _, relay_api, relay_auth_manager = _resolve_relay_context(
+            relay_env=env_key,
+            relay_base_url=relay_base_url,
+        )
         resolved_address = _resolve_address(address=address, key_name=key_name)
         token_info = _get_relay_token(
             address=resolved_address,
@@ -433,6 +673,7 @@ def handle_relay_withdraw_latest_status(
                 "address": address,
                 "scan_page_size": scan_page_size,
                 "key_name": key_name,
+                "relay_env": relay_env,
                 "relay_base_url": relay_base_url,
                 "token": token,
             },
@@ -444,11 +685,15 @@ def handle_relay_deposit_list(
     page: int = 1,
     page_size: int = 10,
     key_name: str | None = None,
+    relay_env: str | None = None,
     relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     token: str | None = None
     try:
-        relay_api, relay_auth_manager = _resolve_relay_context(relay_base_url)
+        _, relay_api, relay_auth_manager = _resolve_relay_context(
+            relay_env=relay_env,
+            relay_base_url=relay_base_url,
+        )
         resolved_address = _resolve_address(address=address, key_name=key_name)
         token_info = _get_relay_token(
             address=resolved_address,
@@ -467,6 +712,7 @@ def handle_relay_deposit_list(
                 "page": page,
                 "page_size": page_size,
                 "key_name": key_name,
+                "relay_env": relay_env,
                 "relay_base_url": relay_base_url,
                 "token": token,
             },
@@ -478,12 +724,16 @@ def handle_relay_deposit_latest_status(
     address: str | None = None,
     scan_page_size: int = 20,
     key_name: str | None = None,
+    relay_env: str | None = None,
     relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     token: str | None = None
     try:
-        relay_api, relay_auth_manager = _resolve_relay_context(relay_base_url)
-        _ = _resolve_network_key(network)
+        env_key, _ = _resolve_relay_env_and_chain(network=network, relay_env=relay_env)
+        _, relay_api, relay_auth_manager = _resolve_relay_context(
+            relay_env=env_key,
+            relay_base_url=relay_base_url,
+        )
         resolved_address = _resolve_address(address=address, key_name=key_name)
         token_info = _get_relay_token(
             address=resolved_address,
@@ -503,6 +753,7 @@ def handle_relay_deposit_latest_status(
                 "address": address,
                 "scan_page_size": scan_page_size,
                 "key_name": key_name,
+                "relay_env": relay_env,
                 "relay_base_url": relay_base_url,
                 "token": token,
             },
@@ -516,13 +767,14 @@ def handle_relay_deposit_initiate(
     unit: str | None = "ether",
     gas_price_wei: int | None = None,
     gas_limit: int | None = None,
+    relay_env: str | None = None,
     relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     private_key: str | None = None
     try:
-        chain = registry.resolve(network)
+        env_key, chain = _resolve_relay_env_and_chain(network=network, relay_env=relay_env)
         private_key = get_private_key(name=key_name)
-        deposit_address = relay_config.get_deposit_address(chain.network_key)
+        deposit_address = relay_config.get_deposit_address(env_key)
         client = EvmClient(chain)
         transfer_result = client.transfer_native(
             private_key=private_key,
@@ -541,6 +793,7 @@ def handle_relay_deposit_initiate(
                 "amount": amount,
                 "key_name": key_name,
                 "private_key": private_key,
+                "relay_env": relay_env,
                 "relay_base_url": relay_base_url,
                 "unit": unit,
                 "gas_price_wei": gas_price_wei,
@@ -588,6 +841,41 @@ def transfer_native(
 
 
 @mcp.tool()
+def sign_transaction(
+    network: str | None,
+    to: str | None = None,
+    value: str | None = "0",
+    unit: str | None = "wei",
+    data: str | None = "0x",
+    nonce: int | None = None,
+    key_name: str | None = None,
+    gas_price_wei: int | None = None,
+    gas_limit: int | None = None,
+) -> dict[str, Any]:
+    """Sign an arbitrary EVM transaction with a local key. Private key is never returned."""
+    return handle_sign_transaction(
+        network=network,
+        to=to,
+        value=value,
+        unit=unit,
+        data=data,
+        nonce=nonce,
+        key_name=key_name,
+        gas_price_wei=gas_price_wei,
+        gas_limit=gas_limit,
+    )
+
+
+@mcp.tool()
+def send_raw_transaction(
+    network: str | None,
+    raw_transaction: str,
+) -> dict[str, Any]:
+    """Broadcast a previously signed raw transaction to the selected network."""
+    return handle_send_raw_transaction(network=network, raw_transaction=raw_transaction)
+
+
+@mcp.tool()
 def get_beneficial_address(
     network: str | None,
     address: str | None = None,
@@ -626,23 +914,101 @@ def get_node_staking_info(
 
 
 @mcp.tool()
-def get_node_credits(
+def try_unstake_node(
+    network: str | None,
+    key_name: str | None = None,
+    gas_price_wei: int | None = None,
+    gas_limit: int | None = None,
+) -> dict[str, Any]:
+    """Start node unstake by calling tryUnstake on the NodeStaking contract."""
+    return handle_try_unstake_node(
+        network=network,
+        key_name=key_name,
+        gas_price_wei=gas_price_wei,
+        gas_limit=gas_limit,
+    )
+
+
+@mcp.tool()
+def force_unstake_node(
+    network: str | None,
+    key_name: str | None = None,
+    gas_price_wei: int | None = None,
+    gas_limit: int | None = None,
+) -> dict[str, Any]:
+    """Force complete node unstake after the waiting period has passed."""
+    return handle_force_unstake_node(
+        network=network,
+        key_name=key_name,
+        gas_price_wei=gas_price_wei,
+        gas_limit=gas_limit,
+    )
+
+
+@mcp.tool()
+def get_delegated_staking_infos(
     network: str | None,
     address: str | None = None,
     key_name: str | None = None,
 ) -> dict[str, Any]:
-    """Get node credits balance for a node wallet address."""
-    return handle_get_node_credits(network=network, address=address, key_name=key_name)
+    """List all delegated staking positions for a wallet address."""
+    return handle_get_delegated_staking_infos(network=network, address=address, key_name=key_name)
+
+
+@mcp.tool()
+def delegated_stake(
+    network: str | None,
+    node_address: str,
+    amount: str,
+    key_name: str | None = None,
+    unit: str | None = "ether",
+    gas_price_wei: int | None = None,
+    gas_limit: int | None = None,
+) -> dict[str, Any]:
+    """Create or update delegated stake to a target total amount on a node."""
+    return handle_delegated_stake(
+        network=network,
+        node_address=node_address,
+        amount=amount,
+        key_name=key_name,
+        unit=unit,
+        gas_price_wei=gas_price_wei,
+        gas_limit=gas_limit,
+    )
+
+
+@mcp.tool()
+def delegated_unstake(
+    network: str | None,
+    node_address: str,
+    key_name: str | None = None,
+    gas_price_wei: int | None = None,
+    gas_limit: int | None = None,
+) -> dict[str, Any]:
+    """Cancel delegated stake on a node and withdraw the full staked amount."""
+    return handle_delegated_unstake(
+        network=network,
+        node_address=node_address,
+        key_name=key_name,
+        gas_price_wei=gas_price_wei,
+        gas_limit=gas_limit,
+    )
 
 
 @mcp.tool()
 def relay_get_account_balance(
     address: str | None = None,
     key_name: str | None = None,
+    relay_env: str | None = None,
     relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     """Get Relay account balance in wei for an EVM address."""
-    return handle_relay_get_account_balance(address=address, key_name=key_name, relay_base_url=relay_base_url)
+    return handle_relay_get_account_balance(
+        address=address,
+        key_name=key_name,
+        relay_env=relay_env,
+        relay_base_url=relay_base_url,
+    )
 
 
 @mcp.tool()
@@ -651,6 +1017,7 @@ def relay_withdraw_create(
     amount_wei: str,
     address: str | None = None,
     key_name: str | None = None,
+    relay_env: str | None = None,
     relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     """Create a Relay withdraw request signed by the local key."""
@@ -659,6 +1026,7 @@ def relay_withdraw_create(
         address=address,
         amount_wei=amount_wei,
         key_name=key_name,
+        relay_env=relay_env,
         relay_base_url=relay_base_url,
     )
 
@@ -669,6 +1037,7 @@ def relay_withdraw_list(
     page: int = 1,
     page_size: int = 10,
     key_name: str | None = None,
+    relay_env: str | None = None,
     relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     """List Relay withdraw requests for an address."""
@@ -677,6 +1046,7 @@ def relay_withdraw_list(
         page=page,
         page_size=page_size,
         key_name=key_name,
+        relay_env=relay_env,
         relay_base_url=relay_base_url,
     )
 
@@ -687,6 +1057,7 @@ def relay_withdraw_latest_status(
     address: str | None = None,
     scan_page_size: int = 20,
     key_name: str | None = None,
+    relay_env: str | None = None,
     relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     """Get latest status from Relay withdraw records (0=Processing, 1=Success, 2=Failed)."""
@@ -695,6 +1066,7 @@ def relay_withdraw_latest_status(
         address=address,
         scan_page_size=scan_page_size,
         key_name=key_name,
+        relay_env=relay_env,
         relay_base_url=relay_base_url,
     )
 
@@ -707,6 +1079,7 @@ def relay_deposit_initiate(
     unit: str | None = "ether",
     gas_price_wei: int | None = None,
     gas_limit: int | None = None,
+    relay_env: str | None = None,
     relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     """Initiate Relay deposit by sending on-chain CNX to Relay deposit address."""
@@ -717,6 +1090,7 @@ def relay_deposit_initiate(
         unit=unit,
         gas_price_wei=gas_price_wei,
         gas_limit=gas_limit,
+        relay_env=relay_env,
         relay_base_url=relay_base_url,
     )
 
@@ -727,6 +1101,7 @@ def relay_deposit_list(
     page: int = 1,
     page_size: int = 10,
     key_name: str | None = None,
+    relay_env: str | None = None,
     relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     """List Relay deposit records for an address."""
@@ -735,6 +1110,7 @@ def relay_deposit_list(
         page=page,
         page_size=page_size,
         key_name=key_name,
+        relay_env=relay_env,
         relay_base_url=relay_base_url,
     )
 
@@ -745,6 +1121,7 @@ def relay_deposit_latest_status(
     address: str | None = None,
     scan_page_size: int = 20,
     key_name: str | None = None,
+    relay_env: str | None = None,
     relay_base_url: str | None = None,
 ) -> dict[str, Any]:
     """Get latest status from Relay deposit records (0=Processing, 1=Success, 2=Failed)."""
@@ -753,6 +1130,7 @@ def relay_deposit_latest_status(
         address=address,
         scan_page_size=scan_page_size,
         key_name=key_name,
+        relay_env=relay_env,
         relay_base_url=relay_base_url,
     )
 
@@ -765,6 +1143,34 @@ def create_key(name: str) -> dict[str, Any]:
         return _to_response_payload(result)
     except Exception as exc:  # noqa: BLE001
         raise _execution_error(exc, {"name": name}) from exc
+
+
+@mcp.tool()
+def sign_message(
+    message: str,
+    key_name: str | None = None,
+    message_encoding: str | None = "utf8",
+) -> dict[str, Any]:
+    """Sign an arbitrary message with a local keychain key. Private key is never returned."""
+    private_key: str | None = None
+    try:
+        private_key = get_private_key(name=key_name)
+        result = sign_local_message(
+            private_key=private_key,
+            message=message,
+            encoding=message_encoding,
+        )
+        return _to_response_payload(result)
+    except Exception as exc:  # noqa: BLE001
+        raise _execution_error(
+            exc,
+            {
+                "key_name": key_name,
+                "private_key": private_key,
+                "message": message,
+                "message_encoding": message_encoding,
+            },
+        ) from exc
 
 
 @mcp.tool()

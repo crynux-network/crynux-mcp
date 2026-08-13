@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from importlib.resources import files
-from typing import Any
+from typing import Any, Literal
+
+NetworkKind = Literal["mainnet", "testnet"]
+VALID_NETWORK_KINDS = frozenset({"mainnet", "testnet"})
 
 
 @dataclass(frozen=True)
@@ -16,6 +19,7 @@ class NativeCurrency:
 @dataclass(frozen=True)
 class ChainConfig:
     network_key: str
+    network_kind: NetworkKind
     chain_id: int
     chain_name: str
     rpc_url: str
@@ -46,9 +50,16 @@ def load_chain_registry() -> ChainRegistry:
         rpc_urls = cfg.get("rpc_urls", [])
         if not rpc_urls:
             raise ValueError(f"INVALID_CONFIG: network '{network_key}' has no rpc_urls.")
+        network_kind = str(cfg.get("network_kind", "")).strip().lower()
+        if network_kind not in VALID_NETWORK_KINDS:
+            raise ValueError(
+                f"INVALID_CONFIG: network '{network_key}' network_kind must be "
+                f"'mainnet' or 'testnet', got '{network_kind}'."
+            )
         native = cast_dict(cfg["native_currency"])
         parsed[network_key] = ChainConfig(
             network_key=network_key,
+            network_kind=network_kind,  # type: ignore[arg-type]
             chain_id=int(cfg["chain_id"]),
             chain_name=str(cfg["chain_name"]),
             rpc_url=str(rpc_urls[0]),
