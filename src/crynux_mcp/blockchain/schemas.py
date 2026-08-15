@@ -61,6 +61,15 @@ class SetBeneficialAddressResult:
 
 
 @dataclass(frozen=True)
+class NodeStakeResult:
+    address: str
+    previous_amount_wei: str
+    stake_amount_wei: str
+    value_sent_wei: str
+    tx_hash: str
+
+
+@dataclass(frozen=True)
 class NodeStakingInfoResult:
     address: str
     staked_balance_wei: str

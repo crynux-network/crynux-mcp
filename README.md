@@ -19,6 +19,7 @@ MCP server for Crynux Network operations, designed for LLM clients (such as Curs
 - Arbitrary transaction signing and raw transaction broadcast
 - Beneficial address query and on-chain update
 - Node staking query
+- Node stake on the NodeStaking contract only (does not join Relay or start a node)
 - Node tryUnstake and forceUnstake
 - Delegated staking query, create/update, and unstake
 

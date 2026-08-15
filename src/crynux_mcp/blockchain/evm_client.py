@@ -16,6 +16,7 @@ from crynux_mcp.blockchain.schemas import (
     DelegatedUnstakeResult,
     LatestBlockNumberResult,
     NodeForceUnstakeResult,
+    NodeStakeResult,
     NodeStakingInfoResult,
     NodeTryUnstakeResult,
     SendRawTransactionResult,
@@ -72,6 +73,20 @@ NODE_STAKING_ABI: list[dict[str, Any]] = [
         "name": "getForceUnstakeDelay",
         "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
         "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [],
+        "name": "getMinStakeAmount",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [{"internalType": "uint256", "name": "stakedAmount", "type": "uint256"}],
+        "name": "stake",
+        "outputs": [],
+        "stateMutability": "payable",
         "type": "function",
     },
     {
@@ -368,6 +383,63 @@ class EvmClient:
             force_unstake_available_at=str(force_available_at),
             force_unstake_available_in_seconds=str(force_available_in_seconds),
             can_force_unstake=can_force_unstake,
+        )
+
+    def stake_node(
+        self,
+        private_key: str,
+        amount: str,
+        unit: str | None = None,
+        gas_price_wei: int | None = None,
+        gas_limit: int | None = None,
+    ) -> NodeStakeResult:
+        normalized_unit: Unit = normalize_unit(unit)
+        account = self._validate_private_key(private_key)
+        target_amount_wei = parse_amount_to_wei(amount=amount, unit=normalized_unit)
+        _, contract = self._get_contract(contract_key="node_staking", abi=NODE_STAKING_ABI)
+
+        min_stake_wei = int(contract.functions.getMinStakeAmount().call())
+        if target_amount_wei < min_stake_wei:
+            raise ValueError(
+                "INVALID_AMOUNT: stake amount must be greater than or equal to "
+                f"minimum stake amount ({min_stake_wei} wei)."
+            )
+
+        staking_info = contract.functions.getStakingInfo(account.address).call()
+        previous_amount_wei = int(getattr(staking_info, "stakedBalance", None) or staking_info[1] or 0)
+        status = int(getattr(staking_info, "status", None) or staking_info[2] or 0)
+        if status == 2:
+            raise ValueError(
+                "INVALID_STAKING_STATUS: stake requires status Unstaked (0) or Staked (1), "
+                f"current status is {status}."
+            )
+
+        if target_amount_wei > previous_amount_wei:
+            value_sent_wei = target_amount_wei - previous_amount_wei
+        else:
+            value_sent_wei = 0
+
+        self._assert_provider_chain_id()
+        nonce = self.w3.eth.get_transaction_count(account.address, block_identifier="pending")
+        effective_gas_price = gas_price_wei or int(self.w3.eth.gas_price)
+        tx: dict[str, Any] = contract.functions.stake(int(target_amount_wei)).build_transaction(
+            {
+                "chainId": self.chain.chain_id,
+                "from": account.address,
+                "nonce": int(nonce),
+                "gasPrice": int(effective_gas_price),
+                "value": int(value_sent_wei),
+            }
+        )
+        tx["gas"] = int(gas_limit) if gas_limit else int(self.w3.eth.estimate_gas(tx))
+        signed = account.sign_transaction(tx)
+        tx_hash = self.w3.eth.send_raw_transaction(signed.raw_transaction).hex()
+        return NodeStakeResult(
+            address=account.address,
+            previous_amount_wei=str(previous_amount_wei),
+            stake_amount_wei=str(target_amount_wei),
+            value_sent_wei=str(value_sent_wei),
+            tx_hash=tx_hash,
         )
 
     def try_unstake_node(

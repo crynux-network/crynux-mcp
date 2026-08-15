@@ -263,6 +263,42 @@ def handle_get_node_staking_info(
         raise _execution_error(exc, {"network": network, "address": address, "key_name": key_name}) from exc
 
 
+def handle_stake_node(
+    network: str | None,
+    amount: str,
+    key_name: str | None = None,
+    unit: str | None = "ether",
+    gas_price_wei: int | None = None,
+    gas_limit: int | None = None,
+) -> dict[str, Any]:
+    private_key: str | None = None
+    try:
+        private_key = get_private_key(name=key_name)
+        chain = registry.resolve(network)
+        client = EvmClient(chain)
+        result = client.stake_node(
+            private_key=private_key,
+            amount=amount,
+            unit=unit,
+            gas_price_wei=gas_price_wei,
+            gas_limit=gas_limit,
+        )
+        return _to_response_payload(result)
+    except Exception as exc:  # noqa: BLE001
+        raise _execution_error(
+            exc,
+            {
+                "network": network,
+                "key_name": key_name,
+                "private_key": private_key,
+                "amount": amount,
+                "unit": unit,
+                "gas_price_wei": gas_price_wei,
+                "gas_limit": gas_limit,
+            },
+        ) from exc
+
+
 def handle_try_unstake_node(
     network: str | None,
     key_name: str | None = None,
@@ -911,6 +947,26 @@ def get_node_staking_info(
 ) -> dict[str, Any]:
     """Get staking information for a node wallet address."""
     return handle_get_node_staking_info(network=network, address=address, key_name=key_name)
+
+
+@mcp.tool()
+def stake_node(
+    network: str | None,
+    amount: str,
+    key_name: str | None = None,
+    unit: str | None = "ether",
+    gas_price_wei: int | None = None,
+    gas_limit: int | None = None,
+) -> dict[str, Any]:
+    """Stake or update node stake on the NodeStaking contract only. This does not join Relay, does not start a Crynux node process, and Relay will not dispatch tasks because of this call."""
+    return handle_stake_node(
+        network=network,
+        amount=amount,
+        key_name=key_name,
+        unit=unit,
+        gas_price_wei=gas_price_wei,
+        gas_limit=gas_limit,
+    )
 
 
 @mcp.tool()

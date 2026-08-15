@@ -27,6 +27,7 @@ This document contains detailed input and output fields for each MCP tool.
 | [`get_beneficial_address`](#get_beneficial_address) | Query node beneficial address. |
 | [`set_beneficial_address`](#set_beneficial_address) | Submit transaction to set beneficial address. |
 | [`get_node_staking_info`](#get_node_staking_info) | Query node staking information. |
+| [`stake_node`](#stake_node) | Stake or update node stake on the NodeStaking contract only. This does not join Relay, does not start a Crynux node process, and Relay will not dispatch tasks. |
 | [`try_unstake_node`](#try_unstake_node) | Start node unstake (`tryUnstake`). |
 | [`force_unstake_node`](#force_unstake_node) | Complete node unstake after delay (`forceUnstake`). |
 | [`get_delegated_staking_infos`](#get_delegated_staking_infos) | List delegated staking positions for an address. |
@@ -196,6 +197,33 @@ Output fields:
 - `force_unstake_available_at`: unix timestamp when `forceUnstake` becomes available (`0` when status is not pending unstake).
 - `force_unstake_available_in_seconds`: remaining seconds until `forceUnstake` is available (`0` when already available or status is not pending unstake).
 - `can_force_unstake`: `true` when status is pending unstake and the wait period has passed.
+
+## stake_node
+
+Inputs:
+- `network`: optional (`crynux-on-base` or `crynux-on-base-sepolia`). Defaults to configured default network.
+- `key_name`: optional signer key name. Uses default local key if omitted.
+- `amount`: target total node stake amount as a numeric string. This is the final stake amount after the transaction, not the incremental delta.
+- `unit`: optional, `wei` or `ether` (default: `ether`).
+- `gas_price_wei`: optional override.
+- `gas_limit`: optional override.
+
+Behavior:
+- Calls `stake` on the NodeStaking contract for the signer wallet.
+- This only updates on-chain node stake. It does not join Relay, does not start a Crynux node process, and Relay will not dispatch tasks because of this call.
+- Requires current status `Unstaked` (`0`) or `Staked` (`1`).
+- If no stake exists, this creates a new node stake.
+- If a stake already exists, this updates the stake to the new total amount.
+- When increasing stake, the transaction value is `new_total - previous_total`.
+- When decreasing stake, the transaction value is `0` and the contract refunds the difference.
+- Target amount MUST be greater than or equal to the contract minimum stake amount.
+
+Output fields:
+- `address`: signer address that submits the transaction. This is the node wallet being staked.
+- `previous_amount_wei`
+- `stake_amount_wei`: target total amount after the transaction.
+- `value_sent_wei`: native CNX value attached to the transaction.
+- `tx_hash`
 
 ## try_unstake_node
 
